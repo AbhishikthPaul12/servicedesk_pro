@@ -6,7 +6,6 @@
 [![Express](https://img.shields.io/badge/Express-5.x-000000.svg?style=flat&logo=express)](https://expressjs.com/)
 [![Google Gemini](https://img.shields.io/badge/Google_Gemini-2.5_Flash-4285F4.svg?style=flat&logo=google)](https://ai.google.dev/)
 [![Vite](https://img.shields.io/badge/Vite-5.x-646cff.svg?style=flat&logo=vite)](https://vitejs.dev/)
-[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 
 > An enterprise-grade, modern IT Service Management (ITSM) and Asset Lifecycle Management platform built on the **MERN** stack with **Google Gemini AI** assistance, real-time **SLA breach monitoring**, and granular **Role-Based Access Control (RBAC)**.
 
@@ -208,8 +207,3 @@ Open your browser and navigate to **`http://localhost:3000`**.
 | `/api/reports/assets/export` | GET | Asset Manager / Admin | Authenticated CSV export of assets |
 | `/api/reports/technicians/export`| GET | IT Manager / Admin | Authenticated CSV export of technician workload |
 
----
-
-## 📄 License
-
-This project is licensed under the **ISC License**.
