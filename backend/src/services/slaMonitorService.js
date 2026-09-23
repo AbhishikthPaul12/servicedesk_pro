@@ -35,12 +35,13 @@ export const checkSLABreaches = async () => {
 
             await AuditLog.create({
                 ticket: ticket._id,
-                user: managers[0]?._id || ticket.createdBy,
-                action: "updated",
+                user: null,
+                isSystemAction: true,
+                action: "sla_breached",
                 field: "slaStatus",
                 oldValue: "active",
                 newValue: "breached",
-                description: `SLA breached for ticket ${ticket.ticketNumber}`
+                description: `Automated SLA breach detected for ticket ${ticket.ticketNumber}`
             });
 
             for (const manager of managers) {

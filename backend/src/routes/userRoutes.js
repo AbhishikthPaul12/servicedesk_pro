@@ -6,6 +6,9 @@ import {
 } from "../controllers/userController.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { authorize } from "../middleware/roleMiddleware.js";
+import { validateObjectId } from "../middleware/validateObjectId.js";
+import { validateRequest } from "../middleware/validateRequest.js";
+import { updateUserValidator } from "../validators/userValidators.js";
 
 const router = express.Router();
 
@@ -19,13 +22,17 @@ router.get(
 
 router.get(
     "/:id",
+    validateObjectId("id"),
     authorize("system_admin", "admin", "it_manager", "manager"),
     getUserById
 );
 
 router.patch(
     "/:id",
+    validateObjectId("id"),
     authorize("system_admin", "admin", "it_manager", "manager"),
+    updateUserValidator,
+    validateRequest,
     updateUser
 );
 

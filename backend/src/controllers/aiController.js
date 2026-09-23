@@ -34,7 +34,7 @@ export const analyzeTicket = async (req, res, next) => {
             ticket: ticket._id,
             user: req.user._id,
             action: "updated",
-            details: "AI analysis generated for ticket"
+            description: "AI analysis generated for ticket"
         });
 
         res.status(200).json({
@@ -141,7 +141,7 @@ let articles = await KnowledgeArticle.find({
             ticket: ticket._id,
             user: req.user._id,
             action: "updated",
-            details: "AI knowledge-base suggestions generated for ticket"
+            description: "AI knowledge-base suggestions generated for ticket"
         });
 
         return res.status(200).json({

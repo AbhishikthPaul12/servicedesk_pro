@@ -95,6 +95,9 @@ const assetSchema = new mongoose.Schema(
     }
 );
 
+assetSchema.index({ status: 1, type: 1 });
+assetSchema.index({ assignedTo: 1 });
+
 const Asset = mongoose.model("Asset", assetSchema);
 
 export default Asset;

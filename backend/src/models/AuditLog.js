@@ -11,7 +11,13 @@ const auditLogSchema = new mongoose.Schema(
         user: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
-            required: true
+            required: false,
+            default: null
+        },
+
+        isSystemAction: {
+            type: Boolean,
+            default: false
         },
 
         action: {
@@ -25,7 +31,9 @@ const auditLogSchema = new mongoose.Schema(
                 "commented",
                 "resolved",
                 "closed",
-                "reopened"
+                "reopened",
+                "escalated",
+                "sla_breached"
             ]
         },
 
@@ -54,6 +62,9 @@ const auditLogSchema = new mongoose.Schema(
         timestamps: true
     }
 );
+
+auditLogSchema.index({ ticket: 1, createdAt: -1 });
+auditLogSchema.index({ user: 1, createdAt: -1 });
 
 const AuditLog = mongoose.model("AuditLog", auditLogSchema);
 

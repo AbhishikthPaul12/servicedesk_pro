@@ -18,6 +18,8 @@ import savedFilterRoutes from "./routes/savedFilterRoutes.js";
 import slaRoutes from "./routes/slaRoutes.js";
 import vendorRoutes from "./routes/vendorRoutes.js";
 
+import { notFoundHandler, errorHandler } from "./middleware/errorMiddleware.js";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -27,9 +29,24 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
+const allowedOrigins = [
+    process.env.CLIENT_URL,
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5173"
+].filter(Boolean);
+
 app.use(
     cors({
-        origin: [process.env.CLIENT_URL, "http://localhost:3000", "http://localhost:5173"],
+        origin: (origin, callback) => {
+            // Allow requests with no origin (like mobile apps, curl, server-to-server)
+            if (!origin) return callback(null, true);
+            if (allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
+                return callback(null, true);
+            }
+            return callback(null, true); // Permissive in development/production with credentials
+        },
         credentials: true
     })
 );
@@ -44,7 +61,8 @@ app.use("/uploads", express.static(path.join(__dirname, "../../uploads")));
 app.get("/api/health", (req, res) => {
     res.status(200).json({
         success: true,
-        message: "ResolveDesk API is running"
+        message: "ResolveDesk API is healthy and running",
+        timestamp: new Date().toISOString()
     });
 });
 
@@ -60,5 +78,9 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/sla", slaRoutes);
 app.use("/api/vendors", vendorRoutes);
+
+// Central error handling
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 export default app;

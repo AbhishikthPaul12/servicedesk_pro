@@ -8,6 +8,7 @@ import {
     calculateSLADueDate,
     evaluateSLAStatus
 } from "../services/slaService.js";
+import { createNotification } from "../services/notificationService.js";
 
 export const createTicket = async (req, res, next) => {
     try {
@@ -323,6 +324,8 @@ export const updateTicket = async (req, res, next) => {
         const isAssigned = existingTicket.assignedTo && existingTicket.assignedTo.toString() === req.user._id.toString();
         const isSameDept = req.user.department && existingTicket.department && existingTicket.department.toString() === req.user.department.toString();
 
+        const isStaff = isSystemAdmin || isITManager || isTechnician;
+
         if (!isSystemAdmin) {
             if (isITManager && !isSameDept && req.user.department) {
                 return res.status(403).json({
@@ -336,11 +339,25 @@ export const updateTicket = async (req, res, next) => {
                     message: "You are not authorized to update this ticket"
                 });
             }
-            if (!isITManager && !isTechnician) {
+            if (!isStaff) {
                 if (!isCreator) {
                     return res.status(403).json({
                         success: false,
                         message: "You are not authorized to update this ticket"
+                    });
+                }
+                // Employees cannot edit resolved or closed tickets
+                if (["resolved", "closed"].includes(existingTicket.status) && (req.body.title || req.body.description)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Cannot edit title or description on a resolved or closed ticket"
+                    });
+                }
+                // Employees cannot modify priority, department, resolution, or due dates
+                if (req.body.priority || req.body.department || req.body.resolution || req.body.dueDate) {
+                    return res.status(403).json({
+                        success: false,
+                        message: "Employees are not permitted to modify priority, department, resolution, or due dates"
                     });
                 }
                 const allowedEmployeeStatuses = ["closed", "reopened"];
@@ -354,20 +371,34 @@ export const updateTicket = async (req, res, next) => {
         }
 
         const updates = {};
-
-        const allowedFields = [
-            "title",
-            "description",
-            "category",
-            "priority",
-            "department",
-            "dueDate",
-            "resolution"
-        ];
+        const allowedFields = isStaff
+            ? [
+                "title",
+                "description",
+                "category",
+                "priority",
+                "department",
+                "dueDate",
+                "resolution"
+            ]
+            : ["title", "description", "category"];
 
         for (const field of allowedFields) {
             if (req.body[field] !== undefined) {
                 updates[field] = req.body[field];
+            }
+        }
+
+        // Handle priority changes: recalculate SLA
+        const previousPriority = existingTicket.priority;
+        if (updates.priority && updates.priority !== previousPriority) {
+            const newSLA = await getSLAForPriority(updates.priority);
+            if (newSLA) {
+                existingTicket.sla = newSLA._id;
+                existingTicket.slaDueDate = calculateSLADueDate(
+                    existingTicket.createdAt,
+                    newSLA.resolutionTime
+                );
             }
         }
 
@@ -393,49 +424,71 @@ export const updateTicket = async (req, res, next) => {
         Object.assign(existingTicket, updates);
 
         if (
-    req.body.status === "resolved" &&
-    previousStatus !== "resolved"
-) {
-    existingTicket.resolvedAt = new Date();
-}
+            req.body.status === "resolved" &&
+            previousStatus !== "resolved"
+        ) {
+            existingTicket.resolvedAt = new Date();
+        }
 
-if (req.body.status === "reopened") {
-    existingTicket.resolvedAt = null;
-}
+        if (req.body.status === "reopened") {
+            existingTicket.resolvedAt = null;
+        }
 
-existingTicket.slaStatus = evaluateSLAStatus(existingTicket);
+        existingTicket.slaStatus = evaluateSLAStatus(existingTicket);
 
         await existingTicket.save();
 
-        // Create audit log for status changes
+        // Create audit log and notifications for status changes
         if (
-    req.body.status !== undefined &&
-    previousStatus !== req.body.status
-) {
-    let action = "status_changed";
+            req.body.status !== undefined &&
+            previousStatus !== req.body.status
+        ) {
+            let action = "status_changed";
 
-    if (req.body.status === "resolved") {
-        action = "resolved";
-    }
+            if (req.body.status === "resolved") {
+                action = "resolved";
+            }
 
-    if (req.body.status === "closed") {
-        action = "closed";
-    }
+            if (req.body.status === "closed") {
+                action = "closed";
+            }
 
-    if (req.body.status === "reopened") {
-        action = "reopened";
-    }
+            if (req.body.status === "reopened") {
+                action = "reopened";
+            }
 
-    await AuditLog.create({
-        ticket: existingTicket._id,
-        user: req.user._id,
-        action,
-        field: "status",
-        oldValue: previousStatus,
-        newValue: req.body.status,
-        description: `Ticket status changed from ${previousStatus} to ${req.body.status}`
-    });
-}
+            await AuditLog.create({
+                ticket: existingTicket._id,
+                user: req.user._id,
+                action,
+                field: "status",
+                oldValue: previousStatus,
+                newValue: req.body.status,
+                description: `Ticket status changed from ${previousStatus} to ${req.body.status}`
+            });
+
+            // Notify requester if updater is not the creator
+            if (existingTicket.createdBy.toString() !== req.user._id.toString()) {
+                await createNotification({
+                    recipient: existingTicket.createdBy,
+                    ticket: existingTicket._id,
+                    type: "ticket_status_changed",
+                    title: "Ticket Status Updated",
+                    message: `Ticket ${existingTicket.ticketNumber} status has been updated to "${req.body.status}".`
+                }).catch((err) => console.error("Notification error:", err.message));
+            }
+
+            // Notify assigned technician if different from current updater
+            if (existingTicket.assignedTo && existingTicket.assignedTo.toString() !== req.user._id.toString()) {
+                await createNotification({
+                    recipient: existingTicket.assignedTo,
+                    ticket: existingTicket._id,
+                    type: "ticket_status_changed",
+                    title: "Assigned Ticket Status Updated",
+                    message: `Ticket ${existingTicket.ticketNumber} status changed to "${req.body.status}".`
+                }).catch((err) => console.error("Notification error:", err.message));
+            }
+        }
 
         const populatedTicket = await Ticket.findById(existingTicket._id)
             .populate("createdBy", "name email role")
@@ -502,6 +555,26 @@ export const assignTicket = async (req, res, next) => {
             newValue: technicianId.toString(),
             description: `Ticket assigned to ${technician.name}`
         });
+
+        // Notify technician
+        await createNotification({
+            recipient: technician._id,
+            ticket: ticket._id,
+            type: "ticket_assigned",
+            title: "New Ticket Assigned",
+            message: `You have been assigned to ticket ${ticket.ticketNumber}: "${ticket.title}".`
+        }).catch((err) => console.error("Notification error:", err.message));
+
+        // Notify ticket creator if not the assigner
+        if (ticket.createdBy.toString() !== req.user._id.toString()) {
+            await createNotification({
+                recipient: ticket.createdBy,
+                ticket: ticket._id,
+                type: "ticket_assigned",
+                title: "Technician Assigned",
+                message: `Technician ${technician.name} has been assigned to your ticket ${ticket.ticketNumber}.`
+            }).catch((err) => console.error("Notification error:", err.message));
+        }
 
         const populatedTicket = await Ticket.findById(ticket._id)
             .populate("createdBy", "name email role")

@@ -12,6 +12,12 @@ import {
 
 import { protect } from "../middleware/authMiddleware.js";
 import { authorize } from "../middleware/roleMiddleware.js";
+import { validateObjectId } from "../middleware/validateObjectId.js";
+import { validateRequest } from "../middleware/validateRequest.js";
+import {
+    createAssetValidator,
+    updateAssetValidator
+} from "../validators/assetValidators.js";
 
 const router = express.Router();
 
@@ -19,34 +25,42 @@ router.use(protect);
 
 router.get("/", getAssets);
 
-router.get("/:id", getAssetById);
+router.get("/:id", validateObjectId("id"), getAssetById);
 
 router.post(
     "/",
     authorize("system_admin", "admin", "asset_manager"),
+    createAssetValidator,
+    validateRequest,
     createAsset
 );
 
 router.patch(
     "/:id",
+    validateObjectId("id"),
     authorize("system_admin", "admin", "asset_manager"),
+    updateAssetValidator,
+    validateRequest,
     updateAsset
 );
 
 router.delete(
     "/:id",
+    validateObjectId("id"),
     authorize("system_admin", "admin", "asset_manager"),
     deleteAsset
 );
 
 router.patch(
     "/:id/assign",
+    validateObjectId("id"),
     authorize("system_admin", "admin", "asset_manager"),
     assignAsset
 );
 
 router.patch(
     "/:id/return",
+    validateObjectId("id"),
     authorize("system_admin", "admin", "asset_manager"),
     returnAsset
 );

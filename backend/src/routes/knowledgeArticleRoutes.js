@@ -12,6 +12,12 @@ import {
 
 import { protect } from "../middleware/authMiddleware.js";
 import { authorize } from "../middleware/roleMiddleware.js";
+import { validateObjectId } from "../middleware/validateObjectId.js";
+import { validateRequest } from "../middleware/validateRequest.js";
+import {
+    createArticleValidator,
+    updateArticleValidator
+} from "../validators/knowledgeValidators.js";
 
 const router = express.Router();
 
@@ -22,14 +28,16 @@ router.use(protect);
  */
 router.get("/", getArticles);
 
-router.get("/:id", getArticleById);
+router.get("/:id", validateObjectId("id"), getArticleById);
 
 /*
  * Create
  */
 router.post(
     "/",
-    authorize("admin", "manager", "technician"),
+    authorize("admin", "system_admin", "manager", "it_manager", "technician"),
+    createArticleValidator,
+    validateRequest,
     createArticle
 );
 
@@ -38,7 +46,10 @@ router.post(
  */
 router.patch(
     "/:id",
-    authorize("admin", "manager", "technician"),
+    validateObjectId("id"),
+    authorize("admin", "system_admin", "manager", "it_manager", "technician"),
+    updateArticleValidator,
+    validateRequest,
     updateArticle
 );
 
@@ -47,7 +58,8 @@ router.patch(
  */
 router.delete(
     "/:id",
-    authorize("admin", "manager"),
+    validateObjectId("id"),
+    authorize("admin", "system_admin", "manager", "it_manager"),
     deleteArticle
 );
 
@@ -56,11 +68,13 @@ router.delete(
  */
 router.patch(
     "/:id/helpful",
+    validateObjectId("id"),
     markHelpful
 );
 
 router.patch(
     "/:id/not-helpful",
+    validateObjectId("id"),
     markNotHelpful
 );
 

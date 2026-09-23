@@ -17,14 +17,15 @@ const storage = multer.diskStorage({
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        const base = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 50);
         const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-        const ext = path.extname(file.originalname);
-        cb(null, `${unique}${ext}`);
+        cb(null, `${base}-${unique}${ext}`);
     }
 });
 
 const fileFilter = (req, file, cb) => {
-    const allowed = [
+    const allowedMimes = [
         "image/jpeg",
         "image/png",
         "image/gif",
@@ -37,17 +38,35 @@ const fileFilter = (req, file, cb) => {
         "text/plain",
         "text/csv"
     ];
-    if (allowed.includes(file.mimetype)) {
+
+    const allowedExts = [
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".webp",
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".xls",
+        ".xlsx",
+        ".txt",
+        ".csv"
+    ];
+
+    const ext = path.extname(file.originalname).toLowerCase();
+
+    if (allowedMimes.includes(file.mimetype) && allowedExts.includes(ext)) {
         cb(null, true);
     } else {
-        cb(new Error("File type not allowed. Accepted: images, PDF, Word, Excel, text files."), false);
+        cb(new Error("File type or extension not allowed. Accepted formats: images, PDF, Word, Excel, text files, and CSV."), false);
     }
 };
 
 const upload = multer({
     storage,
     fileFilter,
-    limits: { fileSize: 10 * 1024 * 1024 } // 10 MB
+    limits: { fileSize: 10 * 1024 * 1024 } // 10 MB per file limit
 });
 
 export default upload;

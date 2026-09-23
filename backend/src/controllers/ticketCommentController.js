@@ -1,6 +1,7 @@
 import Ticket from "../models/Ticket.js";
 import TicketComment from "../models/TicketComment.js";
 import AuditLog from "../models/AuditLog.js";
+import { createNotification } from "../services/notificationService.js";
 
 export const addComment = async (req, res, next) => {
     try {
@@ -18,7 +19,7 @@ export const addComment = async (req, res, next) => {
         // Only support staff can create internal notes
         if (
             type === "internal_note" &&
-            !["admin", "manager", "technician"].includes(req.user.role)
+            !["admin", "system_admin", "manager", "it_manager", "technician"].includes(req.user.role)
         ) {
             return res.status(403).json({
                 success: false,
@@ -48,6 +49,42 @@ export const addComment = async (req, res, next) => {
                     ? "Internal note added to ticket"
                     : "Comment added to ticket"
         });
+
+        // Trigger notifications
+        if (type === "comment") {
+            // Notify ticket creator if commenter is not the creator
+            if (ticket.createdBy.toString() !== req.user._id.toString()) {
+                await createNotification({
+                    recipient: ticket.createdBy,
+                    ticket: ticket._id,
+                    type: "ticket_commented",
+                    title: "New Comment on Your Ticket",
+                    message: `${req.user.name} added a comment on ticket ${ticket.ticketNumber}: "${content.slice(0, 80)}${content.length > 80 ? "..." : ""}"`
+                }).catch((err) => console.error("Notification error:", err.message));
+            }
+
+            // Notify assigned technician if commenter is not technician
+            if (ticket.assignedTo && ticket.assignedTo.toString() !== req.user._id.toString()) {
+                await createNotification({
+                    recipient: ticket.assignedTo,
+                    ticket: ticket._id,
+                    type: "ticket_commented",
+                    title: "New Comment on Assigned Ticket",
+                    message: `${req.user.name} added a comment on ticket ${ticket.ticketNumber}: "${content.slice(0, 80)}${content.length > 80 ? "..." : ""}"`
+                }).catch((err) => console.error("Notification error:", err.message));
+            }
+        } else if (type === "internal_note") {
+            // Internal note: notify assigned technician if not author
+            if (ticket.assignedTo && ticket.assignedTo.toString() !== req.user._id.toString()) {
+                await createNotification({
+                    recipient: ticket.assignedTo,
+                    ticket: ticket._id,
+                    type: "ticket_commented",
+                    title: "New Internal Note Added",
+                    message: `${req.user.name} posted an internal note on ticket ${ticket.ticketNumber}.`
+                }).catch((err) => console.error("Notification error:", err.message));
+            }
+        }
 
         const populatedComment = await TicketComment.findById(comment._id)
             .populate("user", "name email role");

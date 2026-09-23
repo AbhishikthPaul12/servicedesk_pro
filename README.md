@@ -103,8 +103,8 @@ ServiceDesk Pro/
 
 ### Step 1: Clone the Repository
 ```bash
-git clone <YOUR_REPOSITORY_URL>
-cd "ServiceDesk Pro"
+git clone https://github.com/AbhishikthPaul12/servicedesk_pro.git
+cd servicedesk_pro
 ```
 
 ---
@@ -182,6 +182,18 @@ npm run dev
 ```
 
 Open your browser and navigate to **`http://localhost:3000`**.
+
+---
+
+### Step 6: Run Automated Tests
+
+Run the backend unit test suite:
+```bash
+cd backend
+npm test
+```
+
+This verifies ticket lifecycle state transitions, asset lifecycle state machine, SLA deadline calculations, and ObjectId validation middleware.
 
 ---
 

@@ -10,10 +10,13 @@ import { protect } from "../middleware/authMiddleware.js";
 
 import { authorize } from "../middleware/roleMiddleware.js";
 
+import { registerValidator, loginValidator } from "../validators/authValidators.js";
+import { validateRequest } from "../middleware/validateRequest.js";
+
 const router = express.Router();
 
-router.post("/register", register);
-router.post("/login", login);
+router.post("/register", registerValidator, validateRequest, register);
+router.post("/login", loginValidator, validateRequest, login);
 
 router.get("/me", protect, getMe);
 

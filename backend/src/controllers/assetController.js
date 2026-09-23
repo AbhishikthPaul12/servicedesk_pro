@@ -161,6 +161,27 @@ export const updateAsset = async (req, res, next) => {
             });
         }
 
+        const VALID_ASSET_TRANSITIONS = {
+            available: ["assigned", "maintenance", "retired"],
+            assigned: ["available", "maintenance", "retired"],
+            maintenance: ["available", "retired"],
+            retired: ["available"]
+        };
+
+        if (req.body.status && req.body.status !== asset.status) {
+            const allowed = VALID_ASSET_TRANSITIONS[asset.status] || [];
+            if (!allowed.includes(req.body.status)) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Invalid asset status transition from "${asset.status}" to "${req.body.status}". Allowed transitions: ${allowed.join(", ") || "none"}`
+                });
+            }
+
+            if (["available", "retired"].includes(req.body.status)) {
+                asset.assignedTo = null;
+            }
+        }
+
         const allowedFields = [
             "name",
             "type",
