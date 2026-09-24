@@ -17,7 +17,6 @@ export const addComment = async (req, res, next) => {
         const { content, isInternal } = req.body;
         let type = req.body.type || "comment";
 
-        // Normalize frontend isInternal boolean → type
         if (isInternal === true || isInternal === "true") {
             type = "internal_note";
         } else if (isInternal === false || isInternal === "false") {
@@ -143,7 +142,6 @@ export const getTicketComments = async (req, res, next) => {
 
         const query = { ticket: ticket._id };
 
-        // Employees (and anyone not internal staff) must never see internal notes
         if (!canSeeInternalNotes(req.user)) {
             query.type = "comment";
         }

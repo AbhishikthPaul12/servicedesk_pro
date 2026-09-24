@@ -1,9 +1,4 @@
-/**
- * Central error handling middleware for ResolveDesk API.
- * Catches all unhandled errors and returns structured JSON responses.
- */
 
-// 404 Not Found handler — catches unmapped routes
 export const notFoundHandler = (req, res, next) => {
     res.status(404).json({
         success: false,
@@ -11,13 +6,11 @@ export const notFoundHandler = (req, res, next) => {
     });
 };
 
-// Global error handler
 export const errorHandler = (err, req, res, next) => {
     let statusCode = err.statusCode || 500;
     let message = err.message || "Internal Server Error";
     let errors = null;
 
-    // Mongoose ValidationError
     if (err.name === "ValidationError" && err.errors) {
         statusCode = 400;
         message = "Validation failed";
@@ -27,20 +20,17 @@ export const errorHandler = (err, req, res, next) => {
         }));
     }
 
-    // Mongoose CastError (invalid ObjectId)
     if (err.name === "CastError") {
         statusCode = 400;
         message = `Invalid ${err.path}: ${err.value}`;
     }
 
-    // MongoDB duplicate key error
     if (err.code === 11000) {
         statusCode = 409;
         const field = Object.keys(err.keyPattern || {})[0] || "field";
         message = `Duplicate value for '${field}'. This ${field} already exists.`;
     }
 
-    // JWT errors
     if (err.name === "JsonWebTokenError") {
         statusCode = 401;
         message = "Invalid authentication token";
@@ -51,7 +41,6 @@ export const errorHandler = (err, req, res, next) => {
         message = "Authentication token has expired";
     }
 
-    // Multer file upload errors
     if (err.code === "LIMIT_FILE_SIZE") {
         statusCode = 400;
         message = "File too large. Maximum file size is 10MB.";
@@ -67,7 +56,6 @@ export const errorHandler = (err, req, res, next) => {
         message = "Unexpected file field name.";
     }
 
-    // Multer custom error (from fileFilter)
     if (err.message && err.message.includes("File type")) {
         statusCode = 400;
     }
@@ -81,7 +69,6 @@ export const errorHandler = (err, req, res, next) => {
         response.errors = errors;
     }
 
-    // Include stack trace only in development
     if (process.env.NODE_ENV !== "production") {
         response.stack = err.stack;
     }

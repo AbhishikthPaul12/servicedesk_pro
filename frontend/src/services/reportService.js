@@ -17,7 +17,6 @@ export const getTechnicianReport = async () => {
   return res.data;
 };
 
-// Helper for authenticated blob file download
 const triggerBlobDownload = (data, filename, type = "text/csv;charset=utf-8;") => {
   const blob = new Blob([data], { type });
   const url = window.URL.createObjectURL(blob);
@@ -30,7 +29,6 @@ const triggerBlobDownload = (data, filename, type = "text/csv;charset=utf-8;") =
   window.URL.revokeObjectURL(url);
 };
 
-// CSV Export Handlers (authenticated via API client)
 export const exportTicketsCSV = async () => {
   const res = await API.get("/reports/tickets/export", { responseType: "blob" });
   const dateStr = new Date().toISOString().slice(0, 10);
@@ -49,13 +47,11 @@ export const exportTechniciansCSV = async () => {
   triggerBlobDownload(res.data, `ServiceDesk_Technicians_${dateStr}.csv`);
 };
 
-// PDF Export Handlers using jsPDF & autoTable
 export const exportTicketsPDF = (ticketData) => {
   if (!ticketData) return;
   const doc = new jsPDF();
   const dateStr = new Date().toLocaleString();
 
-  // Header
   doc.setFontSize(18);
   doc.setTextColor(30, 41, 59);
   doc.text("ServiceDesk Pro", 14, 20);
@@ -68,14 +64,12 @@ export const exportTicketsPDF = (ticketData) => {
   doc.setTextColor(148, 163, 184);
   doc.text(`Generated on: ${dateStr}`, 14, 34);
 
-  // Summary Metrics Section
   doc.setFontSize(11);
   doc.setTextColor(30, 41, 59);
   doc.text(`Total Tickets: ${ticketData.totalTickets || 0}`, 14, 44);
 
   let currentY = 50;
 
-  // SLA Compliance Table
   if (ticketData.slaBreakdown && ticketData.slaBreakdown.length > 0) {
     autoTable(doc, {
       startY: currentY,
@@ -92,7 +86,6 @@ export const exportTicketsPDF = (ticketData) => {
     currentY = doc.lastAutoTable.finalY + 12;
   }
 
-  // Status Breakdown Table
   if (ticketData.statusBreakdown && ticketData.statusBreakdown.length > 0) {
     doc.setFontSize(11);
     doc.setTextColor(30, 41, 59);
@@ -112,7 +105,6 @@ export const exportTicketsPDF = (ticketData) => {
     currentY = doc.lastAutoTable.finalY + 12;
   }
 
-  // Category Breakdown Table
   if (ticketData.categoryBreakdown && ticketData.categoryBreakdown.length > 0) {
     if (currentY > 230) {
       doc.addPage();

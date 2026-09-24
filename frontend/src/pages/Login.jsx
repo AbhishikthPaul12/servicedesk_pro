@@ -33,11 +33,11 @@ const Login = () => {
 
   return (
     <div className="auth-page">
-      {/* Animated background blobs */}
+      {}
       <div className="auth-bg-blob auth-blob-1" />
       <div className="auth-bg-blob auth-blob-2" />
 
-      {/* Theme toggle */}
+      {}
       <motion.div
         style={{ position: "absolute", top: "24px", right: "24px", zIndex: 10 }}
         initial={{ opacity: 0, y: -10 }}
@@ -71,7 +71,7 @@ const Login = () => {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.45, ease: "easeOut" }}
       >
-        {/* Logo */}
+        {}
         <motion.div
           style={{ textAlign: "center", marginBottom: "28px" }}
           initial={{ opacity: 0, y: -12 }}
@@ -89,7 +89,7 @@ const Login = () => {
           </p>
         </motion.div>
 
-        {/* Error */}
+        {}
         <AnimatePresence>
           {error && (
             <motion.div
@@ -174,7 +174,7 @@ const Login = () => {
         </p>
       </motion.div>
 
-      {/* Enterprise compliance and feature marquee */}
+      {}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}

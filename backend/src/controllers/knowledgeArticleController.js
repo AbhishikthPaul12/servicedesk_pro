@@ -12,7 +12,6 @@ export const createArticle = async (req, res, next) => {
             visibility
         } = req.body;
 
-        // Technicians create drafts only; managers/admins may publish
         let articleStatus = status || "draft";
         if (req.user.role === "technician") {
             articleStatus = "draft";
@@ -60,10 +59,6 @@ export const getArticles = async (req, res, next) => {
 
         const filter = {};
 
-        /*
-         * Employees should only see published articles
-         * that are visible to everyone.
-         */
         if (req.user.role === "employee") {
             filter.status = "published";
             filter.visibility = "all";
@@ -181,10 +176,6 @@ export const getArticleById = async (req, res, next) => {
             });
         }
 
-        /*
-         * Employees can only access published,
-         * public articles.
-         */
         if (
             req.user.role === "employee" &&
             (
@@ -224,10 +215,6 @@ export const updateArticle = async (req, res, next) => {
             });
         }
 
-        /*
-         * Technicians can only update articles
-         * they originally created.
-         */
         if (
             req.user.role === "technician" &&
             article.createdBy.toString() !== req.user._id.toString()
@@ -246,10 +233,6 @@ export const updateArticle = async (req, res, next) => {
             "tags"
         ];
 
-        /*
-         * Publishing and archiving are restricted
-         * to system_admin / it_manager.
-         */
         if (
             req.body.status !== undefined &&
             !["system_admin", "admin", "it_manager", "manager"].includes(req.user.role)

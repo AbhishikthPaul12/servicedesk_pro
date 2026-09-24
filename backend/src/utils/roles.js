@@ -1,7 +1,3 @@
-/**
- * Canonical role helpers.
- * Legacy aliases "admin" and "manager" are normalized to system_admin / it_manager.
- */
 
 export const ROLES = {
     SYSTEM_ADMIN: "system_admin",

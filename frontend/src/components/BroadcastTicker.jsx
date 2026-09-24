@@ -57,20 +57,20 @@ const BroadcastTicker = () => {
         transition={{ duration: 0.3 }}
       >
         <div className="broadcast-ticker-inner">
-          {/* Badge indicator on the left */}
+          {}
           <div className="ticker-badge">
             <span className="ticker-pulse-dot" />
             <Radio size={13} className="ticker-radio-icon" />
             <span className="ticker-badge-text">LIVE PULSE</span>
           </div>
 
-          {/* Marquee viewport */}
+          {}
           <div
             className={`ticker-marquee-viewport ${isPaused ? "is-paused" : ""}`}
             onMouseEnter={() => setIsPaused(true)}
             onMouseLeave={() => setIsPaused(false)}
           >
-            {/* Duplicated tracks for seamless infinite looping */}
+            {}
             <div className="ticker-marquee-track">
               {defaultTickerItems.map((item, idx) => (
                 <div key={`track-1-${idx}`} className="ticker-item">
@@ -95,7 +95,7 @@ const BroadcastTicker = () => {
             </div>
           </div>
 
-          {/* Action buttons on the right */}
+          {}
           <div className="ticker-actions">
             <button
               className="ticker-btn"

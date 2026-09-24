@@ -103,7 +103,6 @@ export const deleteDepartment = async (req, res, next) => {
         ]);
 
         if (userCount > 0 || ticketCount > 0) {
-            // Soft-deactivate instead of hard delete
             department.isActive = false;
             await department.save();
 

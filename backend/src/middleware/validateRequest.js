@@ -1,9 +1,5 @@
 import { validationResult } from "express-validator";
 
-/**
- * Generic express-validator result handler.
- * Place after validation chains in routes to halt on validation failures.
- */
 export const validateRequest = (req, res, next) => {
     const errors = validationResult(req);
 

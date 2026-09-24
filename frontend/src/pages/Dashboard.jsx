@@ -107,7 +107,7 @@ const Dashboard = () => {
       animate="visible"
       variants={containerVariants}
     >
-      {/* Page Header */}
+      {}
       <motion.div className="page-header" variants={itemVariants}>
         <div>
           <h1 className="page-title">Welcome back, {user?.name}</h1>
@@ -125,7 +125,7 @@ const Dashboard = () => {
         )}
       </motion.div>
 
-      {/* Live Stream & Incident Ticker Marquee */}
+      {}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -146,7 +146,7 @@ const Dashboard = () => {
         </motion.div>
       ) : (
         <>
-          {/* STATS CARDS */}
+          {}
           <motion.div className="grid-cols-4" variants={containerVariants}>
             {statCards.map((card, i) => (
               <motion.div
@@ -180,7 +180,7 @@ const Dashboard = () => {
             ))}
           </motion.div>
 
-          {/* SLA COMPLIANCE CARD - admin/manager only */}
+          {}
           {(isSystemAdmin || isITManager) && stats?.sla && (
             <motion.div className="card" variants={itemVariants} style={{ marginBottom: "24px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
@@ -219,7 +219,7 @@ const Dashboard = () => {
             </motion.div>
           )}
 
-          {/* TECHNICIAN WORKLOAD TABLE - admin/manager only */}
+          {}
           {(isSystemAdmin || isITManager) && techWorkload.length > 0 && (
             <motion.div className="card" variants={itemVariants} style={{ marginBottom: "24px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
@@ -271,7 +271,7 @@ const Dashboard = () => {
             </motion.div>
           )}
 
-          {/* RECENT TICKETS TABLE */}
+          {}
           <motion.div className="card" variants={itemVariants}>
             <div
               style={{

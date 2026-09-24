@@ -1,9 +1,5 @@
 import { normalizeRole, isSystemAdmin, isITManager, isTechnician, isEmployee } from "./roles.js";
 
-/**
- * Base status transition graph (role-agnostic validity).
- * awaiting_manager_approval is the post-resolution approval gate.
- */
 const allowedTransitions = {
     open: ["assigned", "in_progress"],
     assigned: ["in_progress"],
@@ -14,10 +10,6 @@ const allowedTransitions = {
     reopened: ["in_progress"]
 };
 
-/**
- * Role → allowed target statuses from a given current status.
- * Backend enforces this; frontend should mirror for UX only.
- */
 const roleTransitions = {
     system_admin: {
         open: ["assigned", "in_progress"],
@@ -90,9 +82,6 @@ export const isRoleAllowedTransition = (role, currentStatus, newStatus) => {
     return allowed.includes(newStatus);
 };
 
-/**
- * When a technician marks a ticket resolved, auto-enter manager approval.
- */
 export const resolveTechnicianStatus = (role, requestedStatus) => {
     if (
         (isTechnician(role) || normalizeRole(role) === "technician") &&

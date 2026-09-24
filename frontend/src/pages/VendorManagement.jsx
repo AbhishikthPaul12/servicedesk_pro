@@ -100,7 +100,7 @@ const VendorManagement = () => {
         )}
       </div>
 
-      {/* Search */}
+      {}
       <div className="card" style={{ marginBottom: 20, padding: "14px 20px" }}>
         <input
           className="form-control"
@@ -198,7 +198,7 @@ const VendorManagement = () => {
         </div>
       )}
 
-      {/* Modal */}
+      {}
       {showModal && (
         <div className="modal-overlay" onClick={closeModal}>
           <motion.div className="modal" initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>

@@ -9,11 +9,6 @@ import {
     normalizeRole
 } from "./roles.js";
 
-/**
- * Build a MongoDB filter for ticket list queries based on the authenticated user.
- * IT Manager department cannot be overridden by query params — callers must merge
- * optional filters AFTER this base filter, and never replace department for managers.
- */
 export const buildTicketAccessFilter = (user) => {
     if (isSystemAdmin(user)) {
         return {};
@@ -40,7 +35,6 @@ export const buildTicketAccessFilter = (user) => {
         return { createdBy: user._id };
     }
 
-    // Asset managers have no general ticket list access
     if (isAssetManager(user)) {
         return { _id: null };
     }
@@ -48,9 +42,6 @@ export const buildTicketAccessFilter = (user) => {
     return { _id: null };
 };
 
-/**
- * Whether the user may view/access a ticket document.
- */
 export const canAccessTicket = (user, ticket) => {
     if (!user || !ticket) return false;
     if (isSystemAdmin(user)) return true;
@@ -78,7 +69,6 @@ export const canAccessTicket = (user, ticket) => {
         return isCreator;
     }
 
-    // Asset managers have no general ticket access
     if (isAssetManager(user)) {
         return false;
     }
@@ -137,9 +127,6 @@ export const canTechnicianUpdateAssetOps = (user) => isTechnician(user);
 export const deny = (res, message = "You are not authorized to perform this action", status = 403) =>
     res.status(status).json({ success: false, message });
 
-/**
- * Merge list query filters without allowing IT managers to override department.
- */
 export const applyDepartmentScope = (user, filter, requestedDepartment) => {
     if (isSystemAdmin(user)) {
         if (requestedDepartment) {
@@ -149,7 +136,6 @@ export const applyDepartmentScope = (user, filter, requestedDepartment) => {
     }
 
     if (isITManager(user)) {
-        // Force manager department — ignore client override
         if (user.department) {
             filter.department = user.department;
         }

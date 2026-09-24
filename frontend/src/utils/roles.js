@@ -16,7 +16,6 @@ export const normalizeRole = (role) => {
   return role;
 };
 
-/** Role-aware ticket status transitions (mirrors backend UX only). */
 export const getAllowedStatusOptions = (role, currentStatus) => {
   const r = normalizeRole(role);
   const map = {

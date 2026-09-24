@@ -5,7 +5,6 @@ export const protect = async (req, res, next) => {
     try {
         let token;
 
-        // Check Authorization header
         if (
             req.headers.authorization &&
             req.headers.authorization.startsWith("Bearer ")
@@ -20,13 +19,11 @@ export const protect = async (req, res, next) => {
             });
         }
 
-        // Verify JWT
         const decoded = jwt.verify(
             token,
             process.env.JWT_SECRET
         );
 
-        // Find user
         const user = await User.findById(decoded.userId);
 
         if (!user) {
@@ -43,7 +40,6 @@ export const protect = async (req, res, next) => {
             });
         }
 
-        // Attach user to request
         req.user = user;
 
         next();

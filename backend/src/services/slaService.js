@@ -26,10 +26,6 @@ export const getSLAForPriority = async (priority) => {
     });
 };
 
-/**
- * Add business-minutes to a start date using working days/hours/holidays.
- * resolutionTime / responseTime are stored in minutes of business time.
- */
 export const addBusinessMinutes = (startDate, minutes, businessHours = DEFAULT_BUSINESS_HOURS) => {
     const workingDays = businessHours.workingDays?.length
         ? businessHours.workingDays
@@ -48,7 +44,6 @@ export const addBusinessMinutes = (startDate, minutes, businessHours = DEFAULT_B
     let remaining = minutes;
     const cursor = new Date(startDate);
 
-    // Move cursor into next working window if needed
     const advanceToWorkingWindow = (date) => {
         let d = new Date(date);
         for (let i = 0; i < 366; i++) {
@@ -106,9 +101,6 @@ export const addBusinessMinutes = (startDate, minutes, businessHours = DEFAULT_B
     return current;
 };
 
-/**
- * Calendar-time fallback (legacy). Prefer addBusinessMinutes for SLA deadlines.
- */
 export const calculateSLADueDate = (createdAt, resolutionTime, businessHours = null) => {
     if (businessHours) {
         return addBusinessMinutes(createdAt, resolutionTime, businessHours);
@@ -122,17 +114,12 @@ export const calculateResponseDueDate = (createdAt, responseTime, businessHours 
     return calculateSLADueDate(createdAt, responseTime, businessHours);
 };
 
-/**
- * Evaluate SLA status considering resolution deadline, response deadline, and at-risk threshold.
- * atRiskThresholdPercent: percentage of resolution window elapsed (default 80).
- */
 export const evaluateSLAStatus = (ticket, options = {}) => {
     if (!ticket.slaDueDate) {
         return "not_started";
     }
 
     if (ticket.isEscalated && ticket.slaStatus === "escalated") {
-        // Keep escalated unless resolved/met evaluation overrides below
     }
 
     const now = options.now ? new Date(options.now) : new Date();
@@ -148,7 +135,6 @@ export const evaluateSLAStatus = (ticket, options = {}) => {
         return "breached";
     }
 
-    // Response SLA breach does not alone mark resolution breached, but contributes to at_risk
     const responseBreached =
         ticket.slaResponseDueDate &&
         !ticket.firstResponseAt &&

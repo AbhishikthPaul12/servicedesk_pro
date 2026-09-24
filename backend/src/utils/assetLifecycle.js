@@ -1,9 +1,5 @@
 import mongoose from "mongoose";
 
-/**
- * Valid asset lifecycle transitions.
- * Retired → Available is NOT a normal transition (use explicit reactivation).
- */
 export const ASSET_TRANSITIONS = {
     procurement: ["available", "retired"],
     available: ["assigned", "maintenance", "retired"],

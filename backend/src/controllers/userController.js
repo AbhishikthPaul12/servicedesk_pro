@@ -31,7 +31,6 @@ export const getUsers = async (req, res, next) => {
 
         const filter = {};
 
-        // IT Manager: forced to own department — cannot override via query
         if (isITManager(req.user)) {
             if (!req.user.department) {
                 return res.status(403).json({

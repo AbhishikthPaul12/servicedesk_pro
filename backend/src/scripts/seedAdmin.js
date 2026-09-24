@@ -8,7 +8,6 @@ import User from "../models/User.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load env from backend/.env
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const seedAdmin = async () => {
@@ -19,7 +18,6 @@ const seedAdmin = async () => {
         await mongoose.connect(mongoUri);
         console.log("Connected to MongoDB successfully.");
 
-        // Read optional arguments from CLI: node seedAdmin.js <email> <password> <name>
         const args = process.argv.slice(2);
         const email = args[0] || "admin@servicedesk.com";
         const rawPassword = args[1] || "Admin123!";

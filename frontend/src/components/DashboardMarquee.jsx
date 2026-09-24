@@ -1,7 +1,6 @@
 import React from "react";
 import { Activity, Bell, AlertTriangle, CheckCircle2, ShieldCheck } from "lucide-react";
 
-/** Demo/sample marquee content — clearly labeled; not production metrics. */
 const liveStreamUpdates = [
   {
     type: "sla",

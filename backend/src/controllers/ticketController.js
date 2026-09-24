@@ -84,7 +84,6 @@ export const createTicket = async (req, res, next) => {
             businessHours
         );
 
-        // Employees must use their own department — never trust req.body.department
         let ticketDepartment = null;
         if (isEmployee(req.user)) {
             if (!req.user.department) {
@@ -309,7 +308,6 @@ export const getTicketById = async (req, res, next) => {
             return deny(res, "You are not authorized to view this ticket");
         }
 
-        // Strip internal AI diagnostics for employees
         const responseTicket = ticket.toObject();
         if (isEmployee(req.user)) {
             delete responseTicket.aiAnalysis;
@@ -350,13 +348,11 @@ export const updateTicket = async (req, res, next) => {
             ? ["title", "description", "category", "priority", "resolution"]
             : ["title", "description", "category"];
 
-        // Only system admin / IT manager can change department (within scope)
         if (
             req.body.department !== undefined &&
             (isSystemAdmin(req.user) || isITManager(req.user))
         ) {
             if (isITManager(req.user)) {
-                // Managers cannot move tickets out of their department
                 updates.department = req.user.department;
             } else {
                 updates.department = req.body.department;
@@ -386,7 +382,6 @@ export const updateTicket = async (req, res, next) => {
             }
         }
 
-        // Technicians cannot change priority/department arbitrarily on non-assigned (already gated)
         if (isTechnician(req.user) && req.body.department) {
             return deny(res, "Technicians cannot change ticket department");
         }
@@ -424,7 +419,6 @@ export const updateTicket = async (req, res, next) => {
         const previousStatus = existingTicket.status;
 
         if (requestedStatus !== undefined) {
-            // Technician resolve → awaiting manager approval
             const effectiveStatus = resolveTechnicianStatus(
                 req.user.role,
                 requestedStatus
@@ -441,7 +435,6 @@ export const updateTicket = async (req, res, next) => {
                 !isRoleAllowedTransition(
                     req.user.role,
                     previousStatus,
-                    // For tech, allow "resolved" intent even though effective is awaiting
                     requestedStatus === "resolved" && isTechnician(req.user)
                         ? "resolved"
                         : effectiveStatus
@@ -452,7 +445,6 @@ export const updateTicket = async (req, res, next) => {
                     previousStatus === "in_progress"
                 )
             ) {
-                // Special-case: technician in_progress → resolved is allowed (maps to awaiting)
                 const techResolveOk =
                     isTechnician(req.user) &&
                     previousStatus === "in_progress" &&
@@ -466,7 +458,6 @@ export const updateTicket = async (req, res, next) => {
                 }
             }
 
-            // Direct close blocked for technicians
             if (isTechnician(req.user) && requestedStatus === "closed") {
                 return deny(res, "Technicians cannot directly close tickets");
             }
@@ -559,7 +550,6 @@ export const updateTicket = async (req, res, next) => {
                 }).catch((err) => console.error("Notification error:", err.message));
             }
 
-            // Notify managers when awaiting approval
             if (existingTicket.status === "awaiting_manager_approval") {
                 const managers = await getDepartmentManagers(
                     existingTicket.department

@@ -139,7 +139,6 @@ const ticketSchema = new mongoose.Schema(
             default: null
         },
 
-        // Manager approval workflow
         approvalStatus: {
             type: String,
             enum: ["none", "pending", "approved", "rejected"],
@@ -164,7 +163,6 @@ const ticketSchema = new mongoose.Schema(
             default: null
         },
 
-        // Escalation
         isEscalated: {
             type: Boolean,
             default: false

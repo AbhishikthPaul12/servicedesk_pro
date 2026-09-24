@@ -1,10 +1,6 @@
 import mongoose from "mongoose";
 import Department from "../models/Department.js";
 
-/**
- * Validate a department ID for user assignment.
- * Returns { ok: true, department } or { ok: false, status, message }.
- */
 export const resolveActiveDepartment = async (departmentId, { required = false } = {}) => {
     if (!departmentId) {
         if (required) {
@@ -45,6 +41,5 @@ export const resolveActiveDepartment = async (departmentId, { required = false }
     return { ok: true, department };
 };
 
-/** Roles that must have a department for operational ticket/dept scoping. */
 export const rolesRequiringDepartment = (role) =>
     ["employee", "technician", "it_manager", "manager"].includes(role);

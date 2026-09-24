@@ -24,7 +24,6 @@ const router = express.Router();
 
 router.use(protect);
 
-// GET: system_admin, asset_manager, it_manager (read), technician (limited)
 router.get(
     "/",
     authorize(

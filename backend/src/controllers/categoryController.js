@@ -65,7 +65,6 @@ export const updateCategory = async (req, res, next) => {
         }
 
         const { displayName, description, isActive } = req.body;
-        // Do not rename `name` key silently — preserves ticket references
         if (displayName !== undefined) category.displayName = displayName;
         if (description !== undefined) category.description = description;
         if (isActive !== undefined) category.isActive = isActive;

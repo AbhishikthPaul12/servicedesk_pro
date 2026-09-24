@@ -5,12 +5,7 @@ import { createAuditLog } from "./auditService.js";
 import { evaluateSLAStatus, getAtRiskThreshold } from "./slaService.js";
 import { normalizeRole } from "../utils/roles.js";
 
-/**
- * Notify IT managers for a department (canonical role: it_manager).
- * Also includes legacy "manager" for backward compatibility.
- */
 const getDepartmentManagers = async (departmentId) => {
-    // Never broadcast to all managers when ticket.department is null
     if (!departmentId) {
         return [];
     }
@@ -52,7 +47,6 @@ export const checkSLABreaches = async () => {
                 continue;
             }
 
-            // Do not downgrade from breached
             if (previousStatus === "breached" && newStatus !== "met") {
                 continue;
             }

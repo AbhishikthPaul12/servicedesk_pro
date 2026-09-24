@@ -12,7 +12,6 @@ const KnowledgeBase = () => {
   const [category, setCategory] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  // Form
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
   const [content, setContent] = useState("");
@@ -125,7 +124,7 @@ const KnowledgeBase = () => {
         </div>
       )}
 
-      {/* CREATE ARTICLE MODAL */}
+      {}
       {showCreateModal && (
         <div className="modal-backdrop">
           <div className="modal-content">

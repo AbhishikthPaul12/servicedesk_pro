@@ -32,7 +32,6 @@ const TicketDetails = () => {
   const [technicians, setTechnicians] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Form states
   const [newComment, setNewComment] = useState("");
   const [isInternal, setIsInternal] = useState(false);
   const [workDesc, setWorkDesc] = useState("");
@@ -41,13 +40,11 @@ const TicketDetails = () => {
   const [statusUpdate, setStatusUpdate] = useState("");
   const [resolutionText, setResolutionText] = useState("");
 
-  // AI loading states
   const [aiLoading, setAiLoading] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState(null);
   const [kbLoading, setKbLoading] = useState(false);
   const [kbSuggestions, setKbSuggestions] = useState([]);
 
-  // File upload states
   const [attachFiles, setAttachFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [approvalComment, setApprovalComment] = useState("");
@@ -281,7 +278,7 @@ const TicketDetails = () => {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "24px" }}>
-        {/* LEFT COLUMN: TICKET DETAILS, COMMENTS, WORK LOGS */}
+        {}
         <div>
           <div className="card">
             <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "12px" }}>Description</h3>
@@ -294,7 +291,7 @@ const TicketDetails = () => {
               </div>
             )}
 
-            {/* ATTACHMENTS SECTION */}
+            {}
             <div style={{ marginTop: "20px", borderTop: "1px solid var(--border-default)", paddingTop: "16px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontWeight: 700, fontSize: "0.95rem" }}>
                 <Paperclip size={16} style={{ color: "var(--primary)" }} /> Attachments ({ticket.attachments?.length || 0})
@@ -334,7 +331,7 @@ const TicketDetails = () => {
             </div>
           </div>
 
-          {/* AI ASSISTANCE PANELS */}
+          {}
           {!isEmployee && (
             <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
@@ -388,7 +385,7 @@ const TicketDetails = () => {
             </div>
           )}
 
-          {/* WORK LOGS SUBSYSTEM (TECHNICIAN / MANAGER / ADMIN) */}
+          {}
           {!isEmployee && (
             <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
@@ -443,7 +440,7 @@ const TicketDetails = () => {
             </div>
           )}
 
-          {/* COMMENTS SUBSYSTEM */}
+          {}
           <div className="card">
             <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
               <MessageSquare size={18} /> Ticket Discussion & Comments
@@ -504,13 +501,13 @@ const TicketDetails = () => {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: METADATA & ACTIONS */}
+        {}
         <div>
-          {/* STATUS UPDATE & ASSIGNMENT PANEL */}
+          {}
           <div className="card">
             <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "16px" }}>Ticket Actions</h3>
 
-            {/* EMPLOYEE: CONFIRM RESOLUTION / REOPEN */}
+            {}
             {isEmployee && (ticket.createdBy?._id === user?.id || ticket.createdBy?._id === user?._id) && (
               <div style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
                 {(ticket.status === "resolved" || ticket.status === "awaiting_manager_approval") && (
@@ -539,7 +536,7 @@ const TicketDetails = () => {
               </div>
             )}
 
-            {/* STAFF: ROLE-AWARE STATUS UPDATE */}
+            {}
             {!isEmployee && statusOptions.length > 0 && (
               <>
                 <div className="form-group">
@@ -573,7 +570,7 @@ const TicketDetails = () => {
               </>
             )}
 
-            {/* IT MANAGER / ADMIN: APPROVAL */}
+            {}
             {(isSystemAdmin || isITManager) &&
               (ticket.status === "awaiting_manager_approval" || ticket.status === "resolved") && (
               <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "16px", marginBottom: "16px" }}>
@@ -596,7 +593,7 @@ const TicketDetails = () => {
               </div>
             )}
 
-            {/* IT MANAGER / ADMIN: ESCALATION */}
+            {}
             {(isSystemAdmin || isITManager) && (
               <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "16px", marginBottom: "16px" }}>
                 <label className="form-label">
@@ -635,8 +632,7 @@ const TicketDetails = () => {
             )}
           </div>
 
-
-          {/* TICKET DETAILS SUMMARY CARD */}
+          {}
           <div className="card">
             <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "12px" }}>Properties</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "0.875rem" }}>

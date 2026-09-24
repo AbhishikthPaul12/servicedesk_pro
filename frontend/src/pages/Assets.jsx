@@ -18,13 +18,11 @@ const Assets = () => {
   const [usersError, setUsersError] = useState("");
   const [assigning, setAssigning] = useState(false);
 
-  // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [selectedUser, setSelectedUser] = useState("");
 
-  // Asset Form
   const [assetTag, setAssetTag] = useState("");
   const [name, setName] = useState("");
   const [type, setType] = useState("laptop");
@@ -275,7 +273,7 @@ const Assets = () => {
         </div>
       </div>
 
-      {/* CREATE ASSET MODAL */}
+      {}
       {showAddModal && (
         <div className="modal-backdrop">
           <div className="modal-content">
@@ -354,7 +352,7 @@ const Assets = () => {
         </div>
       )}
 
-      {/* ASSIGN ASSET MODAL */}
+      {}
       {showAssignModal && (
         <div className="modal-backdrop">
           <div className="modal-content">

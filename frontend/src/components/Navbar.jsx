@@ -50,7 +50,6 @@ const Navbar = () => {
       if (res.success) {
         const notifs = res.notifications || [];
         setNotifications(notifs);
-        // Backend uses isRead, so check isRead
         setUnreadCount(notifs.filter((n) => !n.isRead).length);
       }
     } catch (err) {
@@ -64,7 +63,6 @@ const Navbar = () => {
     setMarkingId(id);
     try {
       await markNotificationAsRead(id);
-      // Optimistically update in-memory state
       setNotifications((prev) =>
         prev.map((n) => (n._id === id ? { ...n, isRead: true } : n))
       );
@@ -135,7 +133,7 @@ const Navbar = () => {
       </div>
 
       <div className="navbar-actions">
-        {/* Dark / Light Theme Toggle */}
+        {}
         <motion.button
           onClick={toggleTheme}
           className="theme-toggle-btn"
@@ -169,7 +167,7 @@ const Navbar = () => {
           </AnimatePresence>
         </motion.button>
 
-        {/* Notifications Dropdown */}
+        {}
         <div className="notification-wrapper" ref={dropdownRef}>
           <motion.button
             onClick={() => setShowNotifications(!showNotifications)}
@@ -283,7 +281,7 @@ const Navbar = () => {
 
         <div className="navbar-divider" />
 
-        {/* User Profile Widget */}
+        {}
         <div className="user-profile-widget">
           <div className="user-profile-details">
             <span className="user-profile-name">{user?.name}</span>

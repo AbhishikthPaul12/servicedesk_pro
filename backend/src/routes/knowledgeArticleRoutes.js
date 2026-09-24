@@ -23,16 +23,10 @@ const router = express.Router();
 
 router.use(protect);
 
-/*
- * Read access
- */
 router.get("/", getArticles);
 
 router.get("/:id", validateObjectId("id"), getArticleById);
 
-/*
- * Create
- */
 router.post(
     "/",
     authorize("admin", "system_admin", "manager", "it_manager", "technician"),
@@ -41,9 +35,6 @@ router.post(
     createArticle
 );
 
-/*
- * Update
- */
 router.patch(
     "/:id",
     validateObjectId("id"),
@@ -53,9 +44,6 @@ router.patch(
     updateArticle
 );
 
-/*
- * Delete
- */
 router.delete(
     "/:id",
     validateObjectId("id"),
@@ -63,9 +51,6 @@ router.delete(
     deleteArticle
 );
 
-/*
- * Feedback
- */
 router.patch(
     "/:id/helpful",
     validateObjectId("id"),

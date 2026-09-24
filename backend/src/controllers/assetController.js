@@ -74,8 +74,6 @@ export const getAssets = async (req, res, next) => {
 
         const filter = {};
 
-        // Employees must not get unrestricted inventory — already denied by canViewAssets
-        // Technicians: operational view — non-retired, non-archived by default
         if (isTechnician(req.user) && !isSystemAdmin(req.user) && !isAssetManager(req.user)) {
             filter.isArchived = { $ne: true };
             filter.status = { $nin: ["retired"] };
@@ -199,7 +197,6 @@ export const updateAsset = async (req, res, next) => {
             });
         }
 
-        // Technicians: limited operational updates (notes, flag maintenance)
         if (isTechnician(req.user) && !canManageAssets(req.user)) {
             const techAllowed = ["notes"];
             if (req.body.status === "maintenance" && asset.status !== "retired") {
@@ -244,7 +241,6 @@ export const updateAsset = async (req, res, next) => {
             return deny(res, "Only Asset Managers and System Admins can update assets");
         }
 
-        // Explicit reactivation: retired → available
         if (req.body.status === "available" && asset.status === "retired") {
             if (!canReactivateAsset(req.user.role)) {
                 return deny(res, "Not authorized to reactivate retired assets");
@@ -308,7 +304,6 @@ export const updateAsset = async (req, res, next) => {
             }
         }
 
-        // IT Manager is read-only — already blocked by canManageAssets unless admin/asset_manager
         if (isITManager(req.user) && !isSystemAdmin(req.user) && !isAssetManager(req.user)) {
             return deny(res, "IT Managers have read-only access to assets");
         }
@@ -326,7 +321,6 @@ export const updateAsset = async (req, res, next) => {
             "vendor"
         ];
 
-        // Warranty admin reserved for asset manager / system admin
         for (const field of allowedFields) {
             if (req.body[field] !== undefined) {
                 asset[field] = req.body[field];
@@ -364,7 +358,6 @@ export const deleteAsset = async (req, res, next) => {
             });
         }
 
-        // Soft-delete / archive — preserve history
         asset.isArchived = true;
         asset.archivedAt = new Date();
         asset.archivedBy = req.user._id;

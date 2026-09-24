@@ -8,11 +8,9 @@ const router = express.Router();
 
 router.use(protect);
 
-// All roles can read SLAs (needed for ticket creation context)
 router.get("/", getSLAs);
 router.get("/:id", validateObjectId("id"), getSLAById);
 
-// Only system admin can mutate SLAs
 router.post("/", authorize("system_admin", "admin"), createSLA);
 router.patch("/:id", validateObjectId("id"), authorize("system_admin", "admin"), updateSLA);
 router.delete("/:id", validateObjectId("id"), authorize("system_admin", "admin"), deleteSLA);

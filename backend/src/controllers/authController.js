@@ -6,7 +6,6 @@ export const register = async (req, res, next) => {
     try {
         const { name, email, password, role } = req.body;
 
-        // Disallow self-registration for administrator roles
         const requestedRole = role ? String(role).trim().toLowerCase() : "employee";
         const restrictedAdminRoles = ["admin", "system_admin"];
 
@@ -17,11 +16,9 @@ export const register = async (req, res, next) => {
             });
         }
 
-        // Only allow standard self-registration roles, default to employee
         const allowedSelfRoles = ["employee", "technician"];
         const sanitizedRole = allowedSelfRoles.includes(requestedRole) ? requestedRole : "employee";
 
-        // Check whether user already exists
         const existingUser = await User.findOne({ email });
 
         if (existingUser) {
@@ -31,11 +28,9 @@ export const register = async (req, res, next) => {
             });
         }
 
-        // Hash password
         const salt = await bcrypt.genSalt(12);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Create user
         const user = await User.create({
             name,
             email,
@@ -43,7 +38,6 @@ export const register = async (req, res, next) => {
             role: sanitizedRole
         });
 
-        // Generate JWT
         const token = generateToken(user._id);
 
         res.status(201).json({

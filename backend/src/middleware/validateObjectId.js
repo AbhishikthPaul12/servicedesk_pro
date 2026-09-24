@@ -1,10 +1,5 @@
 import mongoose from "mongoose";
 
-/**
- * Middleware to validate MongoDB ObjectId route parameters.
- * Usage: router.get("/:id", validateObjectId("id"), controllerMethod);
- * Or: router.get("/:ticketId/comments/:commentId", validateObjectId("ticketId", "commentId"), ...);
- */
 export const validateObjectId = (...paramNames) => {
     const params = paramNames.length > 0 ? paramNames : ["id"];
 

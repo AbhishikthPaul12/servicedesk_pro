@@ -67,7 +67,7 @@ const Reports = () => {
           <p style={{ color: "#64748b", fontSize: "0.875rem" }}>SLA compliance, technician workload, asset distribution, with ready CSV and PDF exports.</p>
         </div>
 
-        {/* EXPORT ACTIONS */}
+        {}
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
           {(isSystemAdmin || isITManager) && (
             <>
@@ -116,7 +116,7 @@ const Reports = () => {
         <div className="card" style={{ padding: "40px", textAlign: "center" }}>Loading analytical report data...</div>
       ) : (
         <>
-          {/* SLA & TICKET REPORT SECTION */}
+          {}
           {(isSystemAdmin || isITManager) && ticketData && (
             <div className="card">
               <h3 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px", color: "var(--text-primary)" }}>
@@ -141,7 +141,7 @@ const Reports = () => {
                 ))}
               </div>
 
-              {/* TICKET STATUS & CATEGORY BREAKDOWNS */}
+              {}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
                 <div>
                   <h4 style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: "12px", color: "var(--text-primary)" }}>Tickets by Status</h4>
@@ -170,7 +170,7 @@ const Reports = () => {
             </div>
           )}
 
-          {/* TECHNICIAN WORKLOAD REPORT TABLE */}
+          {}
           {(isSystemAdmin || isITManager) && techData.length > 0 && (
             <div className="card">
               <h3 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
@@ -208,7 +208,7 @@ const Reports = () => {
             </div>
           )}
 
-          {/* ASSET REPORT SECTION */}
+          {}
           {(isSystemAdmin || isAssetManager) && assetData && (
             <div className="card">
               <h3 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px", color: "var(--text-primary)" }}>

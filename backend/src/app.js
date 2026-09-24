@@ -44,12 +44,11 @@ const allowedOrigins = [
 app.use(
     cors({
         origin: (origin, callback) => {
-            // Allow requests with no origin (like mobile apps, curl, server-to-server)
             if (!origin) return callback(null, true);
             if (allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
                 return callback(null, true);
             }
-            return callback(null, true); // Permissive in development/production with credentials
+            return callback(null, true);
         },
         credentials: true
     })
@@ -59,7 +58,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Serve uploaded files as static assets
 app.use("/uploads", express.static(path.join(__dirname, "../../uploads")));
 
 app.get("/api/health", (req, res) => {
@@ -87,7 +85,6 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/config", configRoutes);
 app.use("/api/audit", auditRoutes);
 
-// Central error handling
 app.use(notFoundHandler);
 app.use(errorHandler);
 

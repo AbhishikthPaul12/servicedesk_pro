@@ -1,9 +1,5 @@
 import AuditLog from "../models/AuditLog.js";
 
-/**
- * Create an audit log entry.
- * Use actor: null + isSystemAction: true for SYSTEM-generated events.
- */
 export const createAuditLog = async ({
     ticket = null,
     user = null,

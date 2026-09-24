@@ -106,7 +106,7 @@ const Tickets = () => {
         )}
       </motion.div>
 
-      {/* SAVED FILTERS */}
+      {}
       {savedFilters.length > 0 && (
         <motion.div
           style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "18px", flexWrap: "wrap" }}
@@ -143,7 +143,7 @@ const Tickets = () => {
         </motion.div>
       )}
 
-      {/* FILTER CONTROLS */}
+      {}
       <motion.div className="filters-bar" variants={rowVariants}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1, minWidth: "220px" }}>
           <Search size={18} color="var(--text-muted)" />
@@ -205,7 +205,7 @@ const Tickets = () => {
         </div>
       </motion.div>
 
-      {/* TICKETS TABLE */}
+      {}
       <motion.div className="card" variants={rowVariants}>
         <div className="table-responsive">
           <table>
@@ -268,7 +268,7 @@ const Tickets = () => {
           </table>
         </div>
 
-        {/* PAGINATION */}
+        {}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "16px" }}>
           <motion.button
             className="btn btn-secondary"

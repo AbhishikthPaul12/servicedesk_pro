@@ -2,9 +2,6 @@ import { GoogleGenAI } from "@google/genai";
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
-/**
- * Heuristic fallback classifier when Gemini API is unavailable or unconfigured.
- */
 const fallbackClassification = (title = "", description = "") => {
     const text = `${title} ${description}`.toLowerCase();
 

@@ -1,8 +1,5 @@
 import mongoose from "mongoose";
 
-/**
- * Singleton-style system configuration for business hours, SLA thresholds, etc.
- */
 const systemConfigSchema = new mongoose.Schema(
     {
         key: {
@@ -19,7 +16,7 @@ const systemConfigSchema = new mongoose.Schema(
             },
             workingDays: {
                 type: [Number],
-                default: [1, 2, 3, 4, 5] // Mon-Fri (0=Sun)
+                default: [1, 2, 3, 4, 5]
             },
             startHour: {
                 type: Number,
@@ -35,7 +32,7 @@ const systemConfigSchema = new mongoose.Schema(
             },
             holidays: {
                 type: [String],
-                default: [] // YYYY-MM-DD
+                default: []
             }
         },
 
