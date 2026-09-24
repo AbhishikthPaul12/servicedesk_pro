@@ -82,3 +82,9 @@ export const updateAssetValidator = [
         .optional({ nullable: true, checkFalsy: true })
         .isMongoId().withMessage("Invalid assigned user ID")
 ];
+
+export const assignAssetValidator = [
+    body("userId")
+        .notEmpty().withMessage("User ID is required")
+        .isMongoId().withMessage("Invalid user ID format")
+];

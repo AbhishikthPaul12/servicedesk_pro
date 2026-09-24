@@ -17,7 +17,8 @@ import {
     buildTicketAccessFilter,
     canAccessTicket,
     canCreateWorkLog,
-    applyDepartmentScope
+    applyDepartmentScope,
+    canManageAssets
 } from "../src/utils/authorization.js";
 import {
     isValidAssetTransition,
@@ -420,6 +421,55 @@ describe("Department Scoping and Report Security", () => {
         const itManager = { role: "it_manager", department: null };
         const ticket = { department: "dept-1" };
         assert.equal(canAccessTicket(itManager, ticket), false);
+    });
+});
+
+describe("Asset Manager & Assignment Security", () => {
+    test("canManageAssets authorizes asset_manager and system_admin only", () => {
+        assert.equal(canManageAssets({ role: "asset_manager" }), true);
+        assert.equal(canManageAssets({ role: "system_admin" }), true);
+        assert.equal(canManageAssets({ role: "admin" }), true);
+        assert.equal(canManageAssets({ role: "it_manager" }), false);
+        assert.equal(canManageAssets({ role: "manager" }), false);
+        assert.equal(canManageAssets({ role: "technician" }), false);
+        assert.equal(canManageAssets({ role: "employee" }), false);
+    });
+
+    test("Asset Manager has no ticket access via canAccessTicket", () => {
+        const assetMgr = { role: "asset_manager", _id: "6ab4a4374094c9dcbfc7b001" };
+        const ticket = { createdBy: "6ab4a4374094c9dcbfc7b002", department: "dept-1" };
+        assert.equal(canAccessTicket(assetMgr, ticket), false);
+    });
+
+    test("Asset Manager ticket access filter returns null isolation", () => {
+        const assetMgr = { role: "asset_manager", _id: "6ab4a4374094c9dcbfc7b001" };
+        const filter = buildTicketAccessFilter(assetMgr);
+        assert.deepEqual(filter, { _id: null });
+    });
+
+    test("assignAssetValidator rejects invalid or missing userId", async () => {
+        const { assignAssetValidator } = await import(
+            "../src/validators/assetValidators.js"
+        );
+        const { validationResult } = await import("express-validator");
+
+        // Missing userId
+        const reqMissing = { body: {} };
+        await Promise.all(assignAssetValidator.map((v) => v.run(reqMissing)));
+        const errorsMissing = validationResult(reqMissing);
+        assert.equal(errorsMissing.isEmpty(), false);
+
+        // Invalid ObjectId
+        const reqInvalid = { body: { userId: "not-a-mongo-id" } };
+        await Promise.all(assignAssetValidator.map((v) => v.run(reqInvalid)));
+        const errorsInvalid = validationResult(reqInvalid);
+        assert.equal(errorsInvalid.isEmpty(), false);
+
+        // Valid ObjectId
+        const reqValid = { body: { userId: "507f1f77bcf86cd799439011" } };
+        await Promise.all(assignAssetValidator.map((v) => v.run(reqValid)));
+        const errorsValid = validationResult(reqValid);
+        assert.equal(errorsValid.isEmpty(), true);
     });
 });
 

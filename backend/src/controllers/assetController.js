@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Asset from "../models/Asset.js";
 import User from "../models/User.js";
 import { createAuditLog } from "../services/auditService.js";
@@ -398,6 +399,14 @@ export const assignAsset = async (req, res, next) => {
         }
 
         const { userId } = req.body;
+
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid user ID"
+            });
+        }
+
         const asset = await Asset.findById(req.params.id);
 
         if (!asset) {

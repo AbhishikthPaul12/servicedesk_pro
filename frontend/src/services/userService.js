@@ -5,6 +5,11 @@ export const getUsers = async (params = {}) => {
   return res.data;
 };
 
+export const getAssignableUsers = async (params = {}) => {
+  const res = await API.get("/users/assignable", { params });
+  return res.data;
+};
+
 export const getUserById = async (id) => {
   const res = await API.get(`/users/${id}`);
   return res.data;

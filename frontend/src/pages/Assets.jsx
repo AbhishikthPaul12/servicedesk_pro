@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { getAssets, createAsset, updateAsset, deleteAsset, assignAsset, returnAsset } from "../services/assetService";
-import { getUsers } from "../services/userService";
+import { getAssignableUsers } from "../services/userService";
 import { HardDrive, Plus, Search, UserCheck, RotateCcw, Trash2, Edit3, ShieldAlert } from "lucide-react";
 
 const Assets = () => {
@@ -14,6 +14,9 @@ const Assets = () => {
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersError, setUsersError] = useState("");
+  const [assigning, setAssigning] = useState(false);
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -50,11 +53,20 @@ const Assets = () => {
   };
 
   const fetchUsersList = async () => {
+    setUsersLoading(true);
+    setUsersError("");
     try {
-      const res = await getUsers({ limit: 100 });
-      if (res.success) setUsers(res.users || []);
+      const res = await getAssignableUsers();
+      if (res.success) {
+        setUsers(res.users || []);
+      } else {
+        setUsersError("Unable to load users for asset assignment.");
+      }
     } catch (err) {
       console.error(err);
+      setUsersError(err.response?.data?.message || "Unable to load users for asset assignment.");
+    } finally {
+      setUsersLoading(false);
     }
   };
 
@@ -85,6 +97,7 @@ const Assets = () => {
 
   const handleAssignAsset = async () => {
     if (!selectedAsset || !selectedUser) return;
+    setAssigning(true);
     try {
       const res = await assignAsset(selectedAsset._id, selectedUser);
       if (res.success) {
@@ -95,6 +108,8 @@ const Assets = () => {
       }
     } catch (err) {
       alert(err.response?.data?.message || "Failed to assign asset");
+    } finally {
+      setAssigning(false);
     }
   };
 
@@ -216,7 +231,12 @@ const Assets = () => {
                         <div style={{ display: "flex", gap: "6px" }}>
                           {asset.status === "available" && (
                             <button
-                              onClick={() => { setSelectedAsset(asset); setShowAssignModal(true); }}
+                              onClick={() => {
+                                setSelectedAsset(asset);
+                                setSelectedUser("");
+                                setShowAssignModal(true);
+                                fetchUsersList();
+                              }}
                               className="btn btn-secondary"
                               style={{ padding: "4px 8px", fontSize: "0.75rem" }}
                               title="Assign User"
@@ -339,23 +359,78 @@ const Assets = () => {
         <div className="modal-backdrop">
           <div className="modal-content">
             <div className="modal-header">
-              <h3 className="modal-title">Assign Asset: {selectedAsset?.name}</h3>
-              <button className="close-btn" onClick={() => setShowAssignModal(false)}>×</button>
+              <h3 className="modal-title">Assign Asset: {selectedAsset?.name} ({selectedAsset?.assetTag})</h3>
+              <button
+                className="close-btn"
+                onClick={() => {
+                  setShowAssignModal(false);
+                  setSelectedAsset(null);
+                  setSelectedUser("");
+                }}
+              >
+                ×
+              </button>
             </div>
 
             <div className="form-group">
               <label className="form-label">Select User to Assign</label>
-              <select className="form-select" value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)}>
-                <option value="">Select Employee / User...</option>
-                {users.map((u) => (
-                  <option key={u._id} value={u._id}>{u.name} ({u.email} - {u.role})</option>
-                ))}
-              </select>
+              {usersLoading ? (
+                <div style={{ padding: "12px", color: "#64748b", fontStyle: "italic" }}>
+                  Loading eligible users...
+                </div>
+              ) : usersError ? (
+                <div style={{ padding: "12px", color: "#ef4444", fontSize: "0.9rem" }}>
+                  <span>{usersError}</span>
+                  <button
+                    type="button"
+                    onClick={fetchUsersList}
+                    className="btn btn-secondary"
+                    style={{ marginLeft: "10px", padding: "2px 8px", fontSize: "0.8rem" }}
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : users.length === 0 ? (
+                <div style={{ padding: "12px", color: "#64748b", fontSize: "0.9rem" }}>
+                  No eligible users found.
+                </div>
+              ) : (
+                <select
+                  className="form-select"
+                  value={selectedUser}
+                  onChange={(e) => setSelectedUser(e.target.value)}
+                  disabled={assigning}
+                >
+                  <option value="">Select Employee / User...</option>
+                  {users.map((u) => (
+                    <option key={u._id} value={u._id}>
+                      {u.name} ({u.email} - {u.role})
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "20px" }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setShowAssignModal(false)}>Cancel</button>
-              <button onClick={handleAssignAsset} className="btn btn-primary">Confirm Assignment</button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setShowAssignModal(false);
+                  setSelectedAsset(null);
+                  setSelectedUser("");
+                }}
+                disabled={assigning}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAssignAsset}
+                className="btn btn-primary"
+                disabled={assigning || !selectedUser || usersLoading || users.length === 0}
+              >
+                {assigning ? "Assigning..." : "Confirm Assignment"}
+              </button>
             </div>
           </div>
         </div>

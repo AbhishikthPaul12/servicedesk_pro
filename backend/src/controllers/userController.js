@@ -94,6 +94,40 @@ export const getUsers = async (req, res, next) => {
     }
 };
 
+export const getAssignableUsers = async (req, res, next) => {
+    try {
+        const filter = { isActive: true };
+
+        if (req.query.keyword) {
+            filter.$or = [
+                { name: { $regex: req.query.keyword, $options: "i" } },
+                { email: { $regex: req.query.keyword, $options: "i" } }
+            ];
+        }
+
+        if (req.query.department) {
+            filter.department = req.query.department;
+        }
+
+        if (req.query.role) {
+            filter.role = req.query.role;
+        }
+
+        const users = await User.find(filter)
+            .select("_id name email role department")
+            .populate("department", "name")
+            .sort({ name: 1 });
+
+        res.status(200).json({
+            success: true,
+            count: users.length,
+            users
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getUserById = async (req, res, next) => {
     try {
         const user = await User.findById(req.params.id)

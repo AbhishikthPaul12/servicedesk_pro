@@ -1,6 +1,7 @@
 import express from "express";
 import {
     getUsers,
+    getAssignableUsers,
     getUserById,
     updateUser,
     createUser
@@ -17,6 +18,12 @@ import {
 const router = express.Router();
 
 router.use(protect);
+
+router.get(
+    "/assignable",
+    authorize("system_admin", "admin", "asset_manager"),
+    getAssignableUsers
+);
 
 router.get(
     "/",

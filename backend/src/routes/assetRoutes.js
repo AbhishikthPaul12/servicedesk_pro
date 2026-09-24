@@ -16,7 +16,8 @@ import { validateObjectId } from "../middleware/validateObjectId.js";
 import { validateRequest } from "../middleware/validateRequest.js";
 import {
     createAssetValidator,
-    updateAssetValidator
+    updateAssetValidator,
+    assignAssetValidator
 } from "../validators/assetValidators.js";
 
 const router = express.Router();
@@ -79,6 +80,8 @@ router.patch(
     "/:id/assign",
     validateObjectId("id"),
     authorize("system_admin", "admin", "asset_manager"),
+    assignAssetValidator,
+    validateRequest,
     assignAsset
 );
 
