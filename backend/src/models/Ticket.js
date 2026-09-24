@@ -230,7 +230,6 @@ ticketSchema.index({ createdBy: 1, createdAt: -1 });
 ticketSchema.index({ assignedTo: 1, status: 1 });
 ticketSchema.index({ department: 1, status: 1 });
 ticketSchema.index({ slaStatus: 1, slaDueDate: 1 });
-ticketSchema.index({ ticketNumber: 1 });
 ticketSchema.index({ isEscalated: 1 });
 ticketSchema.index({ approvalStatus: 1 });
 
