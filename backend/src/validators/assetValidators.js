@@ -12,6 +12,7 @@ const ALLOWED_ASSET_TYPES = [
 ];
 
 const ALLOWED_ASSET_STATUSES = [
+    "procurement",
     "available",
     "assigned",
     "maintenance",

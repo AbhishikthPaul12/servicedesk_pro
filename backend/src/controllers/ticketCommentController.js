@@ -1,11 +1,28 @@
 import Ticket from "../models/Ticket.js";
 import TicketComment from "../models/TicketComment.js";
-import AuditLog from "../models/AuditLog.js";
 import { createNotification } from "../services/notificationService.js";
+import { createAuditLog } from "../services/auditService.js";
+import { canAccessTicket, deny } from "../utils/authorization.js";
+import {
+    canSeeInternalNotes,
+    isEmployee,
+    isAssetManager,
+    normalizeRole,
+    sameId
+} from "../utils/roles.js";
+import { maybeRecordFirstResponse } from "../services/firstResponseService.js";
 
 export const addComment = async (req, res, next) => {
     try {
-        const { content, type = "comment" } = req.body;
+        const { content, isInternal } = req.body;
+        let type = req.body.type || "comment";
+
+        // Normalize frontend isInternal boolean → type
+        if (isInternal === true || isInternal === "true") {
+            type = "internal_note";
+        } else if (isInternal === false || isInternal === "false") {
+            type = "comment";
+        }
 
         const ticket = await Ticket.findById(req.params.ticketId);
 
@@ -16,15 +33,21 @@ export const addComment = async (req, res, next) => {
             });
         }
 
-        // Only support staff can create internal notes
-        if (
-            type === "internal_note" &&
-            !["admin", "system_admin", "manager", "it_manager", "technician"].includes(req.user.role)
-        ) {
-            return res.status(403).json({
-                success: false,
-                message: "You do not have permission to create internal notes"
-            });
+        if (!canAccessTicket(req.user, ticket)) {
+            return deny(res, "You are not authorized to comment on this ticket");
+        }
+
+        if (isAssetManager(req.user)) {
+            return deny(res, "Asset managers cannot comment on tickets");
+        }
+
+        if (type === "internal_note") {
+            if (!canSeeInternalNotes(req.user)) {
+                return deny(res, "You do not have permission to create internal notes");
+            }
+            if (isEmployee(req.user)) {
+                return deny(res, "Employees cannot create internal notes");
+            }
         }
 
         const attachments = (req.files || []).map((f) => ({
@@ -40,9 +63,10 @@ export const addComment = async (req, res, next) => {
             attachments
         });
 
-        await AuditLog.create({
+        await createAuditLog({
             ticket: ticket._id,
             user: req.user._id,
+            actorRole: normalizeRole(req.user.role),
             action: "commented",
             description:
                 type === "internal_note"
@@ -50,10 +74,10 @@ export const addComment = async (req, res, next) => {
                     : "Comment added to ticket"
         });
 
-        // Trigger notifications
+        await maybeRecordFirstResponse(ticket, req.user);
+
         if (type === "comment") {
-            // Notify ticket creator if commenter is not the creator
-            if (ticket.createdBy.toString() !== req.user._id.toString()) {
+            if (!sameId(ticket.createdBy, req.user._id)) {
                 await createNotification({
                     recipient: ticket.createdBy,
                     ticket: ticket._id,
@@ -63,8 +87,7 @@ export const addComment = async (req, res, next) => {
                 }).catch((err) => console.error("Notification error:", err.message));
             }
 
-            // Notify assigned technician if commenter is not technician
-            if (ticket.assignedTo && ticket.assignedTo.toString() !== req.user._id.toString()) {
+            if (ticket.assignedTo && !sameId(ticket.assignedTo, req.user._id)) {
                 await createNotification({
                     recipient: ticket.assignedTo,
                     ticket: ticket._id,
@@ -74,8 +97,7 @@ export const addComment = async (req, res, next) => {
                 }).catch((err) => console.error("Notification error:", err.message));
             }
         } else if (type === "internal_note") {
-            // Internal note: notify assigned technician if not author
-            if (ticket.assignedTo && ticket.assignedTo.toString() !== req.user._id.toString()) {
+            if (ticket.assignedTo && !sameId(ticket.assignedTo, req.user._id)) {
                 await createNotification({
                     recipient: ticket.assignedTo,
                     ticket: ticket._id,
@@ -86,8 +108,10 @@ export const addComment = async (req, res, next) => {
             }
         }
 
-        const populatedComment = await TicketComment.findById(comment._id)
-            .populate("user", "name email role");
+        const populatedComment = await TicketComment.findById(comment._id).populate(
+            "user",
+            "name email role"
+        );
 
         res.status(201).json({
             success: true,
@@ -113,14 +137,14 @@ export const getTicketComments = async (req, res, next) => {
             });
         }
 
-        const query = {
-            ticket: ticket._id
-        };
+        if (!canAccessTicket(req.user, ticket)) {
+            return deny(res, "You are not authorized to view comments on this ticket");
+        }
 
-        // Employees should not see internal notes
-        if (
-            !["admin", "manager", "technician"].includes(req.user.role)
-        ) {
+        const query = { ticket: ticket._id };
+
+        // Employees (and anyone not internal staff) must never see internal notes
+        if (!canSeeInternalNotes(req.user)) {
             query.type = "comment";
         }
 

@@ -4,11 +4,25 @@ import {
     getTechnicianWorkload,
     getAssetAnalytics
 } from "../services/dashboardService.js";
+import { isITManager } from "../utils/roles.js";
 
+const requireManagerDepartment = (req, res) => {
+    if (isITManager(req.user) && !req.user.department) {
+        res.status(403).json({
+            success: false,
+            message:
+                "Your IT Manager account is not assigned to a department. Please contact a System Admin."
+        });
+        return false;
+    }
+    return true;
+};
 
 export const getOverview = async (req, res, next) => {
     try {
-        const stats = await getOverviewStats();
+        if (!requireManagerDepartment(req, res)) return;
+
+        const stats = await getOverviewStats(req.user);
 
         res.status(200).json({
             success: true,
@@ -19,10 +33,11 @@ export const getOverview = async (req, res, next) => {
     }
 };
 
-
 export const getTicketsAnalytics = async (req, res, next) => {
     try {
-        const analytics = await getTicketAnalytics();
+        if (!requireManagerDepartment(req, res)) return;
+
+        const analytics = await getTicketAnalytics(req.user);
 
         res.status(200).json({
             success: true,
@@ -33,10 +48,11 @@ export const getTicketsAnalytics = async (req, res, next) => {
     }
 };
 
-
 export const getTechniciansAnalytics = async (req, res, next) => {
     try {
-        const workload = await getTechnicianWorkload();
+        if (!requireManagerDepartment(req, res)) return;
+
+        const workload = await getTechnicianWorkload(req.user);
 
         res.status(200).json({
             success: true,
@@ -46,7 +62,6 @@ export const getTechniciansAnalytics = async (req, res, next) => {
         next(error);
     }
 };
-
 
 export const getAssetsAnalytics = async (req, res, next) => {
     try {

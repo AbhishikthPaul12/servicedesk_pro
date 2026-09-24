@@ -162,6 +162,7 @@ const Tickets = () => {
           <option value="assigned">Assigned</option>
           <option value="in_progress">In Progress</option>
           <option value="resolved">Resolved</option>
+          <option value="awaiting_manager_approval">Awaiting Approval</option>
           <option value="closed">Closed</option>
           <option value="reopened">Reopened</option>
         </select>

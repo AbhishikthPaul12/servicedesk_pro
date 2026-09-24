@@ -1,18 +1,36 @@
 import {
     getTicketReport,
     getAssetReport,
-    getTechnicianReport
+    getTechnicianReport,
+    buildDeptMatch
 } from "../services/reportService.js";
 import Ticket from "../models/Ticket.js";
 import Asset from "../models/Asset.js";
+import { isITManager } from "../utils/roles.js";
+
+const requireManagerDepartment = (req, res) => {
+    if (isITManager(req.user) && !req.user.department) {
+        res.status(403).json({
+            success: false,
+            message:
+                "Your IT Manager account is not assigned to a department. Please contact a System Admin."
+        });
+        return false;
+    }
+    return true;
+};
 
 export const ticketReport = async (req, res, next) => {
     try {
-        const { startDate, endDate } = req.query;
+        if (!requireManagerDepartment(req, res)) return;
+
+        const { startDate, endDate, department } = req.query;
 
         const report = await getTicketReport({
             startDate,
-            endDate
+            endDate,
+            user: req.user,
+            department
         });
 
         return res.status(200).json({
@@ -41,7 +59,9 @@ export const assetReport = async (req, res, next) => {
 
 export const technicianReport = async (req, res, next) => {
     try {
-        const report = await getTechnicianReport();
+        if (!requireManagerDepartment(req, res)) return;
+
+        const report = await getTechnicianReport(req.user);
 
         return res.status(200).json({
             success: true,
@@ -55,13 +75,30 @@ export const technicianReport = async (req, res, next) => {
 
 export const exportTicketsCSV = async (req, res, next) => {
     try {
-        const tickets = await Ticket.find()
+        if (!requireManagerDepartment(req, res)) return;
+
+        const match = buildDeptMatch(req.user, {}, req.query.department);
+
+        const tickets = await Ticket.find(match)
             .populate("createdBy", "name email")
             .populate("assignedTo", "name email")
             .populate("department", "name")
             .sort({ createdAt: -1 });
 
-        const headers = ["Ticket Number", "Title", "Category", "Priority", "Status", "Created By", "Assigned To", "Department", "SLA Status", "Created At"];
+        const headers = [
+            "Ticket Number",
+            "Title",
+            "Category",
+            "Priority",
+            "Status",
+            "Created By",
+            "Assigned To",
+            "Department",
+            "SLA Status",
+            "Escalated",
+            "Approval Status",
+            "Created At"
+        ];
         const rows = tickets.map((t) => [
             `"${t.ticketNumber}"`,
             `"${(t.title || "").replace(/"/g, '""')}"`,
@@ -72,13 +109,20 @@ export const exportTicketsCSV = async (req, res, next) => {
             `"${t.assignedTo ? t.assignedTo.name : ""}"`,
             `"${t.department ? t.department.name : ""}"`,
             `"${t.slaStatus || ""}"`,
+            `"${t.isEscalated ? "yes" : "no"}"`,
+            `"${t.approvalStatus || ""}"`,
             `"${t.createdAt ? t.createdAt.toISOString() : ""}"`
         ]);
 
-        const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+        const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join(
+            "\n"
+        );
 
         res.setHeader("Content-Type", "text/csv");
-        res.setHeader("Content-Disposition", 'attachment; filename="ticket_report.csv"');
+        res.setHeader(
+            "Content-Disposition",
+            'attachment; filename="ticket_report.csv"'
+        );
         return res.status(200).send(csvContent);
     } catch (error) {
         next(error);
@@ -87,11 +131,22 @@ export const exportTicketsCSV = async (req, res, next) => {
 
 export const exportAssetsCSV = async (req, res, next) => {
     try {
-        const assets = await Asset.find()
+        const assets = await Asset.find({ isArchived: { $ne: true } })
             .populate("assignedTo", "name email")
             .sort({ createdAt: -1 });
 
-        const headers = ["Asset Tag", "Name", "Type", "Brand", "Model", "Serial Number", "Status", "Assigned To", "Purchase Date", "Warranty Expiry"];
+        const headers = [
+            "Asset Tag",
+            "Name",
+            "Type",
+            "Brand",
+            "Model",
+            "Serial Number",
+            "Status",
+            "Assigned To",
+            "Purchase Date",
+            "Warranty Expiry"
+        ];
         const rows = assets.map((a) => [
             `"${a.assetTag}"`,
             `"${(a.name || "").replace(/"/g, '""')}"`,
@@ -105,10 +160,15 @@ export const exportAssetsCSV = async (req, res, next) => {
             `"${a.warrantyExpiry ? a.warrantyExpiry.toISOString().split("T")[0] : ""}"`
         ]);
 
-        const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+        const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join(
+            "\n"
+        );
 
         res.setHeader("Content-Type", "text/csv");
-        res.setHeader("Content-Disposition", 'attachment; filename="asset_report.csv"');
+        res.setHeader(
+            "Content-Disposition",
+            'attachment; filename="asset_report.csv"'
+        );
         return res.status(200).send(csvContent);
     } catch (error) {
         next(error);
@@ -117,9 +177,22 @@ export const exportAssetsCSV = async (req, res, next) => {
 
 export const exportTechniciansCSV = async (req, res, next) => {
     try {
-        const report = await getTechnicianReport();
+        if (!requireManagerDepartment(req, res)) return;
 
-        const headers = ["Technician ID", "Name", "Email", "Role", "Department", "Assigned", "In Progress", "Resolved", "Closed"];
+        const report = await getTechnicianReport(req.user);
+
+        const headers = [
+            "Technician ID",
+            "Name",
+            "Email",
+            "Role",
+            "Department",
+            "Assigned",
+            "In Progress",
+            "Resolved",
+            "Closed",
+            "SLA Breaches"
+        ];
         const rows = report.map((item) => [
             `"${item.technician.id}"`,
             `"${item.technician.name}"`,
@@ -129,13 +202,19 @@ export const exportTechniciansCSV = async (req, res, next) => {
             item.assigned,
             item.inProgress,
             item.resolved,
-            item.closed
+            item.closed,
+            item.breached
         ]);
 
-        const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+        const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join(
+            "\n"
+        );
 
         res.setHeader("Content-Type", "text/csv");
-        res.setHeader("Content-Disposition", 'attachment; filename="technician_report.csv"');
+        res.setHeader(
+            "Content-Disposition",
+            'attachment; filename="technician_report.csv"'
+        );
         return res.status(200).send(csvContent);
     } catch (error) {
         next(error);

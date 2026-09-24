@@ -1,12 +1,45 @@
 import Asset from "../models/Asset.js";
 import User from "../models/User.js";
+import { createAuditLog } from "../services/auditService.js";
+import { createNotification } from "../services/notificationService.js";
+import {
+    ASSET_TRANSITIONS,
+    isValidAssetTransition,
+    canReactivateAsset
+} from "../utils/assetLifecycle.js";
+import {
+    canViewAssets,
+    canManageAssets,
+    deny
+} from "../utils/authorization.js";
+import {
+    isSystemAdmin,
+    isAssetManager,
+    isTechnician,
+    isITManager,
+    normalizeRole
+} from "../utils/roles.js";
 
 export const createAsset = async (req, res, next) => {
     try {
+        if (!canManageAssets(req.user)) {
+            return deny(res, "Only Asset Managers and System Admins can create assets");
+        }
+
         const asset = await Asset.create(req.body);
 
+        await createAuditLog({
+            user: req.user._id,
+            actorRole: normalizeRole(req.user.role),
+            action: "asset_created",
+            entity: "asset",
+            entityId: asset._id,
+            description: `Asset ${asset.assetTag} created`
+        });
+
         const populatedAsset = await Asset.findById(asset._id)
-            .populate("assignedTo", "name email role");
+            .populate("assignedTo", "name email role")
+            .populate("vendor", "name");
 
         res.status(201).json({
             success: true,
@@ -20,6 +53,10 @@ export const createAsset = async (req, res, next) => {
 
 export const getAssets = async (req, res, next) => {
     try {
+        if (!canViewAssets(req.user)) {
+            return deny(res, "You are not authorized to view assets");
+        }
+
         const {
             status,
             type,
@@ -30,22 +67,31 @@ export const getAssets = async (req, res, next) => {
             page = 1,
             limit = 10,
             sortBy = "createdAt",
-            order = "desc"
+            order = "desc",
+            includeArchived
         } = req.query;
 
         const filter = {};
 
-        if (status) {
-            filter.status = status;
+        // Employees must not get unrestricted inventory — already denied by canViewAssets
+        // Technicians: operational view — non-retired, non-archived by default
+        if (isTechnician(req.user) && !isSystemAdmin(req.user) && !isAssetManager(req.user)) {
+            filter.isArchived = { $ne: true };
+            filter.status = { $nin: ["retired"] };
+            if (status && status !== "retired") {
+                filter.status = status;
+            }
+        } else {
+            if (includeArchived !== "true") {
+                filter.isArchived = { $ne: true };
+            }
+            if (status) {
+                filter.status = status;
+            }
         }
 
-        if (type) {
-            filter.type = type;
-        }
-
-        if (assignedTo) {
-            filter.assignedTo = assignedTo;
-        }
+        if (type) filter.type = type;
+        if (assignedTo) filter.assignedTo = assignedTo;
 
         if (keyword) {
             filter.$or = [
@@ -59,26 +105,16 @@ export const getAssets = async (req, res, next) => {
 
         if (startDate || endDate) {
             filter.createdAt = {};
-
-            if (startDate) {
-                filter.createdAt.$gte = new Date(startDate);
-            }
-
+            if (startDate) filter.createdAt.$gte = new Date(startDate);
             if (endDate) {
                 const end = new Date(endDate);
                 end.setHours(23, 59, 59, 999);
-
                 filter.createdAt.$lte = end;
             }
         }
 
         const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
-
-        const limitNumber = Math.min(
-            Math.max(parseInt(limit, 10) || 10, 1),
-            100
-        );
-
+        const limitNumber = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 100);
         const skip = (pageNumber - 1) * limitNumber;
 
         const allowedSortFields = [
@@ -90,20 +126,16 @@ export const getAssets = async (req, res, next) => {
             "warrantyExpiry",
             "status"
         ];
-
-        const safeSortBy = allowedSortFields.includes(sortBy)
-            ? sortBy
-            : "createdAt";
-
+        const safeSortBy = allowedSortFields.includes(sortBy) ? sortBy : "createdAt";
         const safeOrder = order === "asc" ? 1 : -1;
 
         const [assets, total] = await Promise.all([
             Asset.find(filter)
                 .populate("assignedTo", "name email role")
+                .populate("vendor", "name")
                 .sort({ [safeSortBy]: safeOrder })
                 .skip(skip)
                 .limit(limitNumber),
-
             Asset.countDocuments(filter)
         ]);
 
@@ -131,8 +163,13 @@ export const getAssets = async (req, res, next) => {
 
 export const getAssetById = async (req, res, next) => {
     try {
+        if (!canViewAssets(req.user)) {
+            return deny(res, "You are not authorized to view assets");
+        }
+
         const asset = await Asset.findById(req.params.id)
-            .populate("assignedTo", "name email role");
+            .populate("assignedTo", "name email role")
+            .populate("vendor", "name");
 
         if (!asset) {
             return res.status(404).json({
@@ -161,25 +198,118 @@ export const updateAsset = async (req, res, next) => {
             });
         }
 
-        const VALID_ASSET_TRANSITIONS = {
-            available: ["assigned", "maintenance", "retired"],
-            assigned: ["available", "maintenance", "retired"],
-            maintenance: ["available", "retired"],
-            retired: ["available"]
-        };
+        // Technicians: limited operational updates (notes, flag maintenance)
+        if (isTechnician(req.user) && !canManageAssets(req.user)) {
+            const techAllowed = ["notes"];
+            if (req.body.status === "maintenance" && asset.status !== "retired") {
+                if (!isValidAssetTransition(asset.status, "maintenance")) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Cannot move asset from ${asset.status} to maintenance`
+                    });
+                }
+                const previous = asset.status;
+                asset.status = "maintenance";
+                await createAuditLog({
+                    user: req.user._id,
+                    actorRole: normalizeRole(req.user.role),
+                    action: "asset_lifecycle_changed",
+                    entity: "asset",
+                    entityId: asset._id,
+                    field: "status",
+                    oldValue: previous,
+                    newValue: "maintenance",
+                    description: `Technician flagged asset ${asset.assetTag} for maintenance`
+                });
+            }
+            for (const field of techAllowed) {
+                if (req.body[field] !== undefined) {
+                    asset[field] = req.body[field];
+                }
+            }
+            await asset.save();
+            const populated = await Asset.findById(asset._id).populate(
+                "assignedTo",
+                "name email role"
+            );
+            return res.status(200).json({
+                success: true,
+                message: "Asset updated successfully",
+                asset: populated
+            });
+        }
 
-        if (req.body.status && req.body.status !== asset.status) {
-            const allowed = VALID_ASSET_TRANSITIONS[asset.status] || [];
-            if (!allowed.includes(req.body.status)) {
+        if (!canManageAssets(req.user)) {
+            return deny(res, "Only Asset Managers and System Admins can update assets");
+        }
+
+        // Explicit reactivation: retired → available
+        if (req.body.status === "available" && asset.status === "retired") {
+            if (!canReactivateAsset(req.user.role)) {
+                return deny(res, "Not authorized to reactivate retired assets");
+            }
+            if (req.body.reactivate !== true && req.body.reactivate !== "true") {
                 return res.status(400).json({
                     success: false,
-                    message: `Invalid asset status transition from "${asset.status}" to "${req.body.status}". Allowed transitions: ${allowed.join(", ") || "none"}`
+                    message:
+                        "Retired assets cannot normally become Available. Set reactivate=true for an audited reactivation."
+                });
+            }
+            const previous = asset.status;
+            asset.status = "available";
+            asset.assignedTo = null;
+            await asset.save();
+            await createAuditLog({
+                user: req.user._id,
+                actorRole: normalizeRole(req.user.role),
+                action: "asset_reactivated",
+                entity: "asset",
+                entityId: asset._id,
+                field: "status",
+                oldValue: previous,
+                newValue: "available",
+                description: `Asset ${asset.assetTag} explicitly reactivated from retired`
+            });
+            const populated = await Asset.findById(asset._id).populate(
+                "assignedTo",
+                "name email role"
+            );
+            return res.status(200).json({
+                success: true,
+                message: "Asset reactivated successfully",
+                asset: populated
+            });
+        }
+
+        if (req.body.status && req.body.status !== asset.status) {
+            if (!isValidAssetTransition(asset.status, req.body.status)) {
+                const allowed = ASSET_TRANSITIONS[asset.status] || [];
+                return res.status(400).json({
+                    success: false,
+                    message: `Invalid asset status transition from "${asset.status}" to "${req.body.status}". Allowed: ${allowed.join(", ") || "none"}`
                 });
             }
 
-            if (["available", "retired"].includes(req.body.status)) {
+            await createAuditLog({
+                user: req.user._id,
+                actorRole: normalizeRole(req.user.role),
+                action: "asset_lifecycle_changed",
+                entity: "asset",
+                entityId: asset._id,
+                field: "status",
+                oldValue: asset.status,
+                newValue: req.body.status,
+                description: `Asset ${asset.assetTag} lifecycle: ${asset.status} → ${req.body.status}`
+            });
+
+            if (["available", "retired", "procurement"].includes(req.body.status)) {
                 asset.assignedTo = null;
             }
+        }
+
+        // IT Manager is read-only — already blocked by canManageAssets unless admin/asset_manager
+        if (isITManager(req.user) && !isSystemAdmin(req.user) && !isAssetManager(req.user)) {
+            return deny(res, "IT Managers have read-only access to assets");
         }
 
         const allowedFields = [
@@ -191,9 +321,11 @@ export const updateAsset = async (req, res, next) => {
             "status",
             "purchaseDate",
             "warrantyExpiry",
-            "notes"
+            "notes",
+            "vendor"
         ];
 
+        // Warranty admin reserved for asset manager / system admin
         for (const field of allowedFields) {
             if (req.body[field] !== undefined) {
                 asset[field] = req.body[field];
@@ -203,7 +335,8 @@ export const updateAsset = async (req, res, next) => {
         await asset.save();
 
         const populatedAsset = await Asset.findById(asset._id)
-            .populate("assignedTo", "name email role");
+            .populate("assignedTo", "name email role")
+            .populate("vendor", "name");
 
         res.status(200).json({
             success: true,
@@ -217,6 +350,10 @@ export const updateAsset = async (req, res, next) => {
 
 export const deleteAsset = async (req, res, next) => {
     try {
+        if (!canManageAssets(req.user)) {
+            return deny(res, "Only Asset Managers and System Admins can archive assets");
+        }
+
         const asset = await Asset.findById(req.params.id);
 
         if (!asset) {
@@ -226,11 +363,28 @@ export const deleteAsset = async (req, res, next) => {
             });
         }
 
-        await asset.deleteOne();
+        // Soft-delete / archive — preserve history
+        asset.isArchived = true;
+        asset.archivedAt = new Date();
+        asset.archivedBy = req.user._id;
+        if (asset.status !== "retired") {
+            asset.status = "retired";
+            asset.assignedTo = null;
+        }
+        await asset.save();
+
+        await createAuditLog({
+            user: req.user._id,
+            actorRole: normalizeRole(req.user.role),
+            action: "asset_archived",
+            entity: "asset",
+            entityId: asset._id,
+            description: `Asset ${asset.assetTag} archived`
+        });
 
         res.status(200).json({
             success: true,
-            message: "Asset deleted successfully"
+            message: "Asset archived successfully"
         });
     } catch (error) {
         next(error);
@@ -239,14 +393,24 @@ export const deleteAsset = async (req, res, next) => {
 
 export const assignAsset = async (req, res, next) => {
     try {
-        const { userId } = req.body;
+        if (!canManageAssets(req.user)) {
+            return deny(res, "Only Asset Managers and System Admins can assign assets");
+        }
 
+        const { userId } = req.body;
         const asset = await Asset.findById(req.params.id);
 
         if (!asset) {
             return res.status(404).json({
                 success: false,
                 message: "Asset not found"
+            });
+        }
+
+        if (asset.isArchived) {
+            return res.status(400).json({
+                success: false,
+                message: "Cannot assign an archived asset"
             });
         }
 
@@ -266,13 +430,44 @@ export const assignAsset = async (req, res, next) => {
             });
         }
 
+        if (!user.isActive) {
+            return res.status(400).json({
+                success: false,
+                message: "Cannot assign assets to inactive users"
+            });
+        }
+
         asset.assignedTo = user._id;
         asset.status = "assigned";
+        asset.assignmentHistory.push({
+            user: user._id,
+            assignedBy: req.user._id,
+            assignedAt: new Date()
+        });
 
         await asset.save();
 
-        const populatedAsset = await Asset.findById(asset._id)
-            .populate("assignedTo", "name email role");
+        await createAuditLog({
+            user: req.user._id,
+            actorRole: normalizeRole(req.user.role),
+            action: "asset_assigned",
+            entity: "asset",
+            entityId: asset._id,
+            description: `Asset ${asset.assetTag} assigned to ${user.name}`,
+            metadata: { assignedTo: user._id.toString() }
+        });
+
+        await createNotification({
+            recipient: user._id,
+            type: "asset_assigned",
+            title: "Asset Assigned",
+            message: `Asset ${asset.assetTag} (${asset.name}) has been assigned to you.`
+        }).catch(() => {});
+
+        const populatedAsset = await Asset.findById(asset._id).populate(
+            "assignedTo",
+            "name email role"
+        );
 
         res.status(200).json({
             success: true,
@@ -282,8 +477,14 @@ export const assignAsset = async (req, res, next) => {
     } catch (error) {
         next(error);
     }
-};export const returnAsset = async (req, res, next) => {
+};
+
+export const returnAsset = async (req, res, next) => {
     try {
+        if (!canManageAssets(req.user)) {
+            return deny(res, "Only Asset Managers and System Admins can return assets");
+        }
+
         const asset = await Asset.findById(req.params.id);
 
         if (!asset) {
@@ -300,10 +501,28 @@ export const assignAsset = async (req, res, next) => {
             });
         }
 
+        const previousUser = asset.assignedTo;
+
+        if (asset.assignmentHistory?.length) {
+            const last = asset.assignmentHistory[asset.assignmentHistory.length - 1];
+            if (last && !last.returnedAt) {
+                last.returnedAt = new Date();
+            }
+        }
+
         asset.assignedTo = null;
         asset.status = "available";
-
         await asset.save();
+
+        await createAuditLog({
+            user: req.user._id,
+            actorRole: normalizeRole(req.user.role),
+            action: "asset_returned",
+            entity: "asset",
+            entityId: asset._id,
+            description: `Asset ${asset.assetTag} returned`,
+            metadata: { previousUser: previousUser?.toString() }
+        });
 
         res.status(200).json({
             success: true,
@@ -314,4 +533,3 @@ export const assignAsset = async (req, res, next) => {
         next(error);
     }
 };
-

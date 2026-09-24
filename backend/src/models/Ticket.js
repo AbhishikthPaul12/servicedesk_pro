@@ -39,12 +39,7 @@ const ticketSchema = new mongoose.Schema(
 
         priority: {
             type: String,
-            enum: [
-                "low",
-                "medium",
-                "high",
-                "critical"
-            ],
+            enum: ["low", "medium", "high", "critical"],
             default: "medium"
         },
 
@@ -55,6 +50,7 @@ const ticketSchema = new mongoose.Schema(
                 "assigned",
                 "in_progress",
                 "resolved",
+                "awaiting_manager_approval",
                 "closed",
                 "reopened"
             ],
@@ -73,6 +69,24 @@ const ticketSchema = new mongoose.Schema(
             default: null
         },
 
+        assignedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null
+        },
+
+        assignedAt: {
+            type: Date,
+            default: null
+        },
+
+        authorizedTechnicians: [
+            {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "User"
+            }
+        ],
+
         department: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Department",
@@ -80,31 +94,43 @@ const ticketSchema = new mongoose.Schema(
         },
 
         sla: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "SLA",
-    default: null
-},
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "SLA",
+            default: null
+        },
 
         slaDueDate: {
-    type: Date,
-    default: null
-},
+            type: Date,
+            default: null
+        },
+
+        slaResponseDueDate: {
+            type: Date,
+            default: null
+        },
+
+        firstResponseAt: {
+            type: Date,
+            default: null
+        },
 
         slaStatus: {
-    type: String,
-    enum: [
-        "not_started",
-        "active",
-        "met",
-        "breached"
-    ],
-    default: "not_started"
-},
+            type: String,
+            enum: [
+                "not_started",
+                "active",
+                "at_risk",
+                "breached",
+                "met",
+                "escalated"
+            ],
+            default: "not_started"
+        },
 
         resolvedAt: {
-    type: Date,
-    default: null
-},
+            type: Date,
+            default: null
+        },
 
         resolution: {
             type: String,
@@ -112,6 +138,62 @@ const ticketSchema = new mongoose.Schema(
             maxlength: 5000,
             default: null
         },
+
+        // Manager approval workflow
+        approvalStatus: {
+            type: String,
+            enum: ["none", "pending", "approved", "rejected"],
+            default: "none"
+        },
+
+        approvedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null
+        },
+
+        approvedAt: {
+            type: Date,
+            default: null
+        },
+
+        approvalComment: {
+            type: String,
+            trim: true,
+            maxlength: 2000,
+            default: null
+        },
+
+        // Escalation
+        isEscalated: {
+            type: Boolean,
+            default: false
+        },
+
+        escalatedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null
+        },
+
+        escalatedAt: {
+            type: Date,
+            default: null
+        },
+
+        escalationReason: {
+            type: String,
+            trim: true,
+            maxlength: 2000,
+            default: null
+        },
+
+        relatedAssets: [
+            {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "Asset"
+            }
+        ],
 
         attachments: [
             {
@@ -121,44 +203,22 @@ const ticketSchema = new mongoose.Schema(
         ],
 
         aiAnalysis: {
-            category: {
-                type: String,
-                default: null
-            },
-
-            priority: {
-                type: String,
-                default: null
-            },
-
-            probableIssue: {
-                type: String,
-                default: null
-            },
-
-            confidence: {
-                type: Number,
-                min: 0,
-                max: 1,
-                default: null
-            }
+            category: { type: String, default: null },
+            priority: { type: String, default: null },
+            probableIssue: { type: String, default: null },
+            confidence: { type: Number, min: 0, max: 1, default: null }
         },
+
         aiKnowledgeSuggestions: [
-    {
-        articleId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "KnowledgeArticle"
-        },
-        relevanceScore: {
-            type: Number,
-            min: 0,
-            max: 1
-        },
-        reason: {
-            type: String
-        }
-    }
-]
+            {
+                articleId: {
+                    type: mongoose.Schema.Types.ObjectId,
+                    ref: "KnowledgeArticle"
+                },
+                relevanceScore: { type: Number, min: 0, max: 1 },
+                reason: { type: String }
+            }
+        ]
     },
     {
         timestamps: true
@@ -171,6 +231,8 @@ ticketSchema.index({ assignedTo: 1, status: 1 });
 ticketSchema.index({ department: 1, status: 1 });
 ticketSchema.index({ slaStatus: 1, slaDueDate: 1 });
 ticketSchema.index({ ticketNumber: 1 });
+ticketSchema.index({ isEscalated: 1 });
+ticketSchema.index({ approvalStatus: 1 });
 
 const Ticket = mongoose.model("Ticket", ticketSchema);
 

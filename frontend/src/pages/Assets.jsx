@@ -157,10 +157,11 @@ const Assets = () => {
 
         <select className="form-select" style={{ width: "auto" }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">All Statuses</option>
-          <option value="available">Available (Procured)</option>
+          <option value="procurement">Procurement</option>
+          <option value="available">Available</option>
           <option value="assigned">Assigned</option>
-          <option value="maintenance">Maintenance / Repair</option>
-          <option value="retired">Retired / Replaced</option>
+          <option value="maintenance">Maintenance</option>
+          <option value="retired">Retired</option>
         </select>
 
         <select className="form-select" style={{ width: "auto" }} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>

@@ -5,6 +5,9 @@ import {
   getTicketById,
   updateTicket,
   assignTicket,
+  approveTicket,
+  rejectTicket,
+  escalateTicket,
   addComment,
   getTicketComments,
   addWorkLog,
@@ -14,7 +17,8 @@ import {
   getKBSuggestions
 } from "../services/ticketService";
 import { getUsers } from "../services/userService";
-import { Sparkles, Clock, UserCheck, MessageSquare, Plus, FileText, CheckCircle, AlertCircle, Paperclip, Download, CheckCircle2, RotateCcw } from "lucide-react";
+import { getAllowedStatusOptions, STATUS_LABELS, getRoleLabel } from "../utils/roles";
+import { Sparkles, Clock, UserCheck, MessageSquare, Plus, FileText, CheckCircle, AlertCircle, Paperclip, Download, CheckCircle2, RotateCcw, ShieldAlert } from "lucide-react";
 
 const TicketDetails = () => {
   const { id } = useParams();
@@ -46,6 +50,8 @@ const TicketDetails = () => {
   // File upload states
   const [attachFiles, setAttachFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [approvalComment, setApprovalComment] = useState("");
+  const [escalationReason, setEscalationReason] = useState("");
 
   useEffect(() => {
     fetchTicketData();
@@ -207,6 +213,52 @@ const TicketDetails = () => {
     }
   };
 
+  const handleApprove = async () => {
+    try {
+      const res = await approveTicket(id, approvalComment);
+      if (res.success) {
+        setTicket(res.ticket);
+        setApprovalComment("");
+        alert("Resolution approved — ticket closed");
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to approve");
+    }
+  };
+
+  const handleReject = async () => {
+    try {
+      const res = await rejectTicket(id, approvalComment, "in_progress");
+      if (res.success) {
+        setTicket(res.ticket);
+        setApprovalComment("");
+        alert("Resolution rejected — returned to in progress");
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to reject");
+    }
+  };
+
+  const handleEscalate = async () => {
+    if (!escalationReason.trim()) {
+      alert("Escalation reason is required");
+      return;
+    }
+    try {
+      const res = await escalateTicket(id, escalationReason);
+      if (res.success) {
+        setTicket(res.ticket);
+        setEscalationReason("");
+        alert("Ticket escalated");
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to escalate");
+    }
+  };
+
+  const statusOptions = getAllowedStatusOptions(user?.role, ticket?.status || "open");
+  const isInternalNote = (c) => c.type === "internal_note" || c.isInternal === true;
+
   if (loading) return <div className="card" style={{ padding: "40px", textAlign: "center" }}>Loading ticket details...</div>;
   if (!ticket) return <div className="card" style={{ padding: "40px", textAlign: "center" }}>Ticket not found or unauthorized.</div>;
 
@@ -219,7 +271,9 @@ const TicketDetails = () => {
         </div>
         <div style={{ display: "flex", gap: "8px" }}>
           <span className={`badge badge-${ticket.priority}`}>{ticket.priority} priority</span>
-          <span className={`badge badge-${ticket.status}`}>{ticket.status.replace("_", " ")}</span>
+          <span className={`badge badge-${ticket.status}`}>
+            {STATUS_LABELS[ticket.status] || ticket.status.replace(/_/g, " ")}
+          </span>
           <span className={`badge ${ticket.slaStatus === "breached" ? "badge-critical" : "badge-low"}`}>
             SLA: {ticket.slaStatus || "active"}
           </span>
@@ -432,13 +486,13 @@ const TicketDetails = () => {
                     style={{
                       padding: "12px 14px",
                       borderRadius: "var(--radius-md)",
-                      backgroundColor: c.isInternal ? "var(--warning-light)" : "var(--bg-surface-subtle)",
-                      border: c.isInternal ? "1px solid var(--warning-border)" : "1px solid var(--border-subtle)"
+                      backgroundColor: isInternalNote(c) ? "var(--warning-light)" : "var(--bg-surface-subtle)",
+                      border: isInternalNote(c) ? "1px solid var(--warning-border)" : "1px solid var(--border-subtle)"
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
                       <strong style={{ fontSize: "0.85rem", color: "var(--text-primary)" }}>
-                        {c.user?.name} {c.isInternal && <span style={{ color: "var(--warning)", fontSize: "0.75rem" }}>(Internal Note)</span>}
+                        {c.user?.name} {isInternalNote(c) && <span style={{ color: "var(--warning)", fontSize: "0.75rem" }}>(Internal Note)</span>}
                       </strong>
                       <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{new Date(c.createdAt).toLocaleString()}</span>
                     </div>
@@ -457,9 +511,9 @@ const TicketDetails = () => {
             <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "16px" }}>Ticket Actions</h3>
 
             {/* EMPLOYEE: CONFIRM RESOLUTION / REOPEN */}
-            {isEmployee && ticket.createdBy?._id === user?._id && (
+            {isEmployee && (ticket.createdBy?._id === user?.id || ticket.createdBy?._id === user?._id) && (
               <div style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-                {ticket.status === "resolved" && (
+                {(ticket.status === "resolved" || ticket.status === "awaiting_manager_approval") && (
                   <button
                     onClick={handleConfirmResolution}
                     className="btn btn-primary"
@@ -468,7 +522,7 @@ const TicketDetails = () => {
                     <CheckCircle2 size={16} /> Confirm Resolution (Close)
                   </button>
                 )}
-                {(ticket.status === "resolved" || ticket.status === "closed") && (
+                {(ticket.status === "resolved" || ticket.status === "closed" || ticket.status === "awaiting_manager_approval") && (
                   <button
                     onClick={handleReopenTicket}
                     className="btn btn-secondary"
@@ -477,7 +531,7 @@ const TicketDetails = () => {
                     <RotateCcw size={15} /> Reopen Ticket
                   </button>
                 )}
-                {ticket.status !== "resolved" && ticket.status !== "closed" && (
+                {ticket.status !== "resolved" && ticket.status !== "closed" && ticket.status !== "awaiting_manager_approval" && (
                   <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", textAlign: "center" }}>
                     You will be able to confirm or reopen once the ticket is resolved.
                   </p>
@@ -485,18 +539,18 @@ const TicketDetails = () => {
               </div>
             )}
 
-            {/* STAFF: STATUS UPDATE */}
-            {!isEmployee && (
+            {/* STAFF: ROLE-AWARE STATUS UPDATE */}
+            {!isEmployee && statusOptions.length > 0 && (
               <>
                 <div className="form-group">
                   <label className="form-label">Update Status</label>
                   <select className="form-select" value={statusUpdate} onChange={(e) => setStatusUpdate(e.target.value)}>
-                    <option value="open">Open</option>
-                    <option value="assigned">Assigned</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="resolved">Resolved</option>
-                    <option value="closed">Closed</option>
-                    <option value="reopened">Reopened</option>
+                    <option value={ticket.status}>
+                      {STATUS_LABELS[ticket.status] || ticket.status} (current)
+                    </option>
+                    {statusOptions.map((s) => (
+                      <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -516,22 +570,68 @@ const TicketDetails = () => {
                 <button onClick={handleStatusUpdate} className="btn btn-primary" style={{ width: "100%", marginBottom: "16px" }}>
                   Save Status Change
                 </button>
-
-                {(isSystemAdmin || isITManager) && (
-                  <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "16px" }}>
-                    <label className="form-label">Assign Technician</label>
-                    <select className="form-select" value={selectedTech} onChange={(e) => setSelectedTech(e.target.value)}>
-                      <option value="">Select Technician...</option>
-                      {technicians.map((t) => (
-                        <option key={t._id} value={t._id}>{t.name} ({t.email})</option>
-                      ))}
-                    </select>
-                    <button onClick={handleAssign} className="btn btn-secondary" style={{ width: "100%", marginTop: "8px" }}>
-                      Assign Ticket
-                    </button>
-                  </div>
-                )}
               </>
+            )}
+
+            {/* IT MANAGER / ADMIN: APPROVAL */}
+            {(isSystemAdmin || isITManager) &&
+              (ticket.status === "awaiting_manager_approval" || ticket.status === "resolved") && (
+              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "16px", marginBottom: "16px" }}>
+                <label className="form-label">Manager Approval</label>
+                <textarea
+                  className="form-textarea"
+                  rows="2"
+                  placeholder="Approval / rejection comment..."
+                  value={approvalComment}
+                  onChange={(e) => setApprovalComment(e.target.value)}
+                />
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <button onClick={handleApprove} className="btn btn-primary" style={{ flex: 1 }}>
+                    Approve & Close
+                  </button>
+                  <button onClick={handleReject} className="btn btn-secondary" style={{ flex: 1 }}>
+                    Reject
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* IT MANAGER / ADMIN: ESCALATION */}
+            {(isSystemAdmin || isITManager) && (
+              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "16px", marginBottom: "16px" }}>
+                <label className="form-label">
+                  <ShieldAlert size={14} style={{ verticalAlign: "middle" }} /> Escalate Ticket
+                </label>
+                <input
+                  className="form-input"
+                  placeholder="Escalation reason (required)"
+                  value={escalationReason}
+                  onChange={(e) => setEscalationReason(e.target.value)}
+                />
+                <button onClick={handleEscalate} className="btn btn-secondary" style={{ width: "100%", marginTop: 8 }}>
+                  Escalate
+                </button>
+                {ticket.isEscalated && (
+                  <p style={{ fontSize: "0.8rem", color: "var(--danger)", marginTop: 8 }}>
+                    Escalated: {ticket.escalationReason}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {(isSystemAdmin || isITManager) && (
+              <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "16px" }}>
+                <label className="form-label">Assign Technician</label>
+                <select className="form-select" value={selectedTech} onChange={(e) => setSelectedTech(e.target.value)}>
+                  <option value="">Select Technician...</option>
+                  {technicians.map((t) => (
+                    <option key={t._id} value={t._id}>{t.name} ({t.email})</option>
+                  ))}
+                </select>
+                <button onClick={handleAssign} className="btn btn-secondary" style={{ width: "100%", marginTop: "8px" }}>
+                  Assign Ticket
+                </button>
+              </div>
             )}
           </div>
 
@@ -545,6 +645,8 @@ const TicketDetails = () => {
               <div><span style={{ color: "#64748b" }}>Department:</span> <strong>{ticket.department ? ticket.department.name : "General"}</strong></div>
               <div><span style={{ color: "#64748b" }}>Created At:</span> <strong>{new Date(ticket.createdAt).toLocaleString()}</strong></div>
               <div><span style={{ color: "#64748b" }}>SLA Due Date:</span> <strong>{ticket.slaDueDate ? new Date(ticket.slaDueDate).toLocaleString() : "N/A"}</strong></div>
+              <div><span style={{ color: "#64748b" }}>Response Due:</span> <strong>{ticket.slaResponseDueDate ? new Date(ticket.slaResponseDueDate).toLocaleString() : "N/A"}</strong></div>
+              <div><span style={{ color: "#64748b" }}>Approval:</span> <strong>{ticket.approvalStatus || "none"}</strong></div>
             </div>
           </div>
         </div>

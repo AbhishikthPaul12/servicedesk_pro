@@ -6,7 +6,10 @@ import {
     getTicketById,
     updateTicket,
     assignTicket,
-    uploadTicketAttachment
+    uploadTicketAttachment,
+    approveTicket,
+    rejectTicket,
+    escalateTicket
 } from "../controllers/ticketController.js";
 
 import { protect } from "../middleware/authMiddleware.js";
@@ -39,6 +42,7 @@ router.use(protect);
 
 router.post(
     "/",
+    authorize("employee", "technician", "it_manager", "system_admin", "admin", "manager"),
     upload.array("attachments", 5),
     createTicketValidator,
     validateRequest,
@@ -66,7 +70,27 @@ router.patch(
     assignTicket
 );
 
-// File attachment upload to existing ticket
+router.post(
+    "/:id/approve",
+    validateObjectId("id"),
+    authorize("system_admin", "admin", "it_manager", "manager"),
+    approveTicket
+);
+
+router.post(
+    "/:id/reject",
+    validateObjectId("id"),
+    authorize("system_admin", "admin", "it_manager", "manager"),
+    rejectTicket
+);
+
+router.post(
+    "/:id/escalate",
+    validateObjectId("id"),
+    authorize("system_admin", "admin", "it_manager", "manager"),
+    escalateTicket
+);
+
 router.post(
     "/:id/attachments",
     validateObjectId("id"),
@@ -92,7 +116,7 @@ router.get(
 router.post(
     "/:ticketId/work-logs",
     validateObjectId("ticketId"),
-    authorize("system_admin", "admin", "it_manager", "manager", "technician"),
+    authorize("system_admin", "admin", "technician"),
     createWorkLogValidator,
     validateRequest,
     addWorkLog
@@ -109,7 +133,7 @@ router.delete(
     "/:ticketId/work-logs/:id",
     validateObjectId("ticketId"),
     validateObjectId("id"),
-    authorize("system_admin", "admin", "it_manager", "manager", "technician"),
+    authorize("system_admin", "admin", "technician"),
     deleteWorkLog
 );
 

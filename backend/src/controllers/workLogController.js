@@ -1,6 +1,15 @@
 import WorkLog from "../models/WorkLog.js";
 import Ticket from "../models/Ticket.js";
-import AuditLog from "../models/AuditLog.js";
+import { createAuditLog } from "../services/auditService.js";
+import {
+    canAccessTicket,
+    canCreateWorkLog,
+    canViewWorkLogs,
+    canDeleteWorkLog,
+    deny
+} from "../utils/authorization.js";
+import { isITManager, normalizeRole } from "../utils/roles.js";
+import { maybeRecordFirstResponse } from "../services/firstResponseService.js";
 
 export const addWorkLog = async (req, res, next) => {
     try {
@@ -16,6 +25,20 @@ export const addWorkLog = async (req, res, next) => {
             });
         }
 
+        if (isITManager(req.user)) {
+            return deny(
+                res,
+                "IT Managers may view work logs but cannot create them as technician work"
+            );
+        }
+
+        if (!canCreateWorkLog(req.user, ticket)) {
+            return deny(
+                res,
+                "You can only create work logs for tickets assigned to you"
+            );
+        }
+
         const workLog = await WorkLog.create({
             ticket: ticketId,
             technician: req.user._id,
@@ -23,15 +46,20 @@ export const addWorkLog = async (req, res, next) => {
             timeSpent: Number(timeSpent)
         });
 
-        await AuditLog.create({
+        await createAuditLog({
             ticket: ticketId,
             user: req.user._id,
+            actorRole: normalizeRole(req.user.role),
             action: "updated",
             description: `Work log added: ${timeSpent} minutes spent`
         });
 
-        const populatedLog = await WorkLog.findById(workLog._id)
-            .populate("technician", "name email role");
+        await maybeRecordFirstResponse(ticket, req.user);
+
+        const populatedLog = await WorkLog.findById(workLog._id).populate(
+            "technician",
+            "name email role"
+        );
 
         res.status(201).json({
             success: true,
@@ -56,12 +84,12 @@ export const getWorkLogs = async (req, res, next) => {
             });
         }
 
-        // Employees are restricted from internal technician work logs
-        if (req.user.role === "employee") {
-            return res.status(403).json({
-                success: false,
-                message: "Employees are not authorized to view internal work logs"
-            });
+        if (!canViewWorkLogs(req.user, ticket)) {
+            return deny(res, "You are not authorized to view work logs for this ticket");
+        }
+
+        if (!canAccessTicket(req.user, ticket)) {
+            return deny(res, "You are not authorized to view this ticket");
         }
 
         const workLogs = await WorkLog.find({ ticket: ticketId })
@@ -94,17 +122,24 @@ export const deleteWorkLog = async (req, res, next) => {
             });
         }
 
-        const isOwner = workLog.technician.toString() === req.user._id.toString();
-        const isAdminOrManager = ["system_admin", "admin", "it_manager", "manager"].includes(req.user.role);
+        const ticket = await Ticket.findById(workLog.ticket);
+        if (ticket && !canAccessTicket(req.user, ticket)) {
+            return deny(res, "You are not authorized to modify this ticket");
+        }
 
-        if (!isOwner && !isAdminOrManager) {
-            return res.status(403).json({
-                success: false,
-                message: "You are not authorized to delete this work log"
-            });
+        if (!canDeleteWorkLog(req.user, workLog)) {
+            return deny(res, "You are not authorized to delete this work log");
         }
 
         await workLog.deleteOne();
+
+        await createAuditLog({
+            ticket: workLog.ticket,
+            user: req.user._id,
+            actorRole: normalizeRole(req.user.role),
+            action: "updated",
+            description: "Work log deleted"
+        });
 
         res.status(200).json({
             success: true,

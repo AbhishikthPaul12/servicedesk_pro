@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import DashboardMarquee from "../components/DashboardMarquee";
+import { getRoleLabel } from "../utils/roles";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -112,7 +113,7 @@ const Dashboard = () => {
           <h1 className="page-title">Welcome back, {user?.name}</h1>
           <p className="page-subtitle">
             Enterprise Helpdesk Workspace &middot; Role:{" "}
-            <strong style={{ color: "var(--primary)" }}>{role}</strong>
+            <strong style={{ color: "var(--primary)" }}>{getRoleLabel(role)}</strong>
           </p>
         </div>
         {isEmployee && (
@@ -186,12 +187,16 @@ const Dashboard = () => {
                 <ShieldAlert size={20} style={{ color: "var(--primary)" }} />
                 <h3 className="section-title" style={{ margin: 0 }}>SLA Compliance Overview</h3>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "16px" }}>
                 {[
                   { label: "Active", value: stats.sla.active || 0, color: "var(--info)" },
+                  { label: "At Risk", value: stats.sla.at_risk || 0, color: "var(--warning)" },
                   { label: "Met", value: stats.sla.met || 0, color: "var(--success)" },
                   { label: "Breached", value: stats.sla.breached || 0, color: "var(--danger)" },
+                  { label: "Escalated", value: stats.sla.escalated || stats.tickets?.escalated || 0, color: "var(--danger)" },
                   { label: "Compliance %", value: `${stats.sla.compliancePercentage ?? 0}%`, color: "var(--primary)" },
+                  { label: "Pending Approvals", value: stats.tickets?.pendingApprovals || 0, color: "var(--warning)" },
+                  { label: "Unassigned", value: stats.tickets?.unassigned || 0, color: "var(--info)" },
                 ].map((item, i) => (
                   <motion.div
                     key={i}

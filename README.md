@@ -1,221 +1,170 @@
-# ServiceDesk Pro — AI-Enabled IT Helpdesk & Asset Management
+# ServiceDesk Pro (ResolveDesk)
 
-[![Node.js](https://img.shields.io/badge/Node.js-v18+-68a063.svg?style=flat&logo=node.js)](https://nodejs.org/)
-[![React](https://img.shields.io/badge/React-18-61dafb.svg?style=flat&logo=react)](https://react.dev/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Database-47a248.svg?style=flat&logo=mongodb)](https://www.mongodb.com/)
-[![Express](https://img.shields.io/badge/Express-5.x-000000.svg?style=flat&logo=express)](https://expressjs.com/)
-[![Google Gemini](https://img.shields.io/badge/Google_Gemini-2.5_Flash-4285F4.svg?style=flat&logo=google)](https://ai.google.dev/)
-[![Vite](https://img.shields.io/badge/Vite-5.x-646cff.svg?style=flat&logo=vite)](https://vitejs.dev/)
+AI-enabled IT Helpdesk & Asset Management platform built on the **MERN** stack (ES modules only).
 
-> An enterprise-grade, modern IT Service Management (ITSM) and Asset Lifecycle Management platform built on the **MERN** stack with **Google Gemini AI** assistance, real-time **SLA breach monitoring**, and granular **Role-Based Access Control (RBAC)**.
+## Roles & Permissions
 
----
+| Role | Capabilities |
+|------|----------------|
+| **System Admin** (`system_admin`) | Users, departments, categories, SLA policies, system config, audit logs, full ticket/asset access |
+| **IT Manager** (`it_manager`) | Department-scoped tickets, assign/reassign technicians, approve/reject resolutions, escalate, SLA monitoring, reports, read-only team directory & asset overview |
+| **Technician** (`technician`) | Assigned/authorized tickets only, work logs on own tickets, comments/internal notes, resolve → manager approval, limited asset ops (view, flag maintenance) |
+| **Employee** (`employee`) | Create tickets (department auto-set), own tickets only, public comments/attachments, confirm resolution / reopen; **no** internal notes, work logs, or AI diagnostics |
+| **Asset Manager** (`asset_manager`) | Full asset lifecycle, assignments, warranties, vendors; **no** general ticket management |
 
-## 🌟 Key Highlights & Capabilities
+Legacy aliases `admin` ↔ `system_admin` and `manager` ↔ `it_manager` are still accepted for compatibility, but new code uses the canonical names.
 
-### 1. 🛡️ Granular 5-Tier Role-Based Access Control (RBAC)
-- **System Admin**: Complete administrative oversight — user provisioning, roles, departments, system-wide configuration, and SLA policies.
-- **IT Manager**: Ticket assignment, technician workload balancing, SLA compliance auditing, workflow approvals, and department-level analytics.
-- **Technician**: Ticket resolution, work logging (time spent & progress notes), internal notes vs. public comments, and asset association.
-- **Asset Manager**: Full IT asset register (hardware/software), warranty tracking, procurement dates, vendor relationships, and asset lifecycle transitions.
-- **Employee**: Self-service ticket creation with AI recommendations, real-time progress tracking, evidence file attachments, and resolution sign-offs.
+**Principle:** Frontend visibility ≠ authorization. Every restriction is enforced by the backend.
 
-### 2. 🤖 Google Gemini AI Engine
-- **Automated Ticket Classification**: Instantly analyzes ticket title and description to predict the category, priority level, and urgency score.
-- **Smart Knowledge Base Recommendations**: Automatically matches incoming incidents to relevant internal resolution articles to empower immediate self-service before technician escalation.
+### Department scoping (IT Manager)
 
-### 3. ⏱️ Automated SLA Engine & Real-Time Breach Monitor
-- **Configurable SLA Policies**: Custom response and resolution time targets configured by ticket priority (Urgent, High, Medium, Low).
-- **Background Cron Evaluator**: Automated background scheduler powered by `node-cron` evaluates active tickets against SLA deadlines every minute.
-- **Automatic Escalation & Flagging**: Identifies approaching and breached tickets, transitions SLA status to `breached`, and generates real-time notifications for IT Managers.
+- Forced: `ticket.department === req.user.department`
+- Query params such as `?department=OTHER` **cannot** override this
+- Applies to tickets, dashboard, reports, CSV exports, SLA metrics, technician workload
 
-### 4. 💻 Asset & Vendor Management
-- **Asset Lifecycle Tracking**: Tracks hardware and software across states (`in_stock`, `assigned`, `under_repair`, `retired`, `disposed`).
-- **Warranty & Lifecycle Auditing**: Logs serial numbers, asset tags, purchase dates, warranty expirations, and active user assignments.
-- **Vendor Management**: Tracks IT vendors, contact persons, support contracts, and maintenance SLAs.
+### Technician ticket visibility
 
-### 5. 📊 Operational Analytics, CSV & PDF Exports
-- **Real-Time Dashboards**: KPI metric cards, status breakdown distribution, priority charts, and recent activity logs.
-- **Authenticated CSV Exports**: 1-click CSV download for Tickets, Asset Inventory, and Technician Workload reports.
-- **Client-Side Vector PDF Reports**: Formatted executive PDF report generator powered by `jspdf` and `jspdf-autotable`.
-- **Print Optimization**: Native print stylesheet for physical printing or browser PDF output.
+Technicians see only:
 
-### 6. 🎨 Premium Modern UI & Experience
-- **Fluid Light & Dark Theme**: Full CSS variable-driven theme switcher with instant persistence.
-- **Dynamic Broadcast Ticker**: System-wide announcements for IT maintenance or critical incidents.
-- **Responsive Layout**: Designed for desktop workstations, tablets, and mobile devices.
+- tickets assigned to them
+- tickets in `authorizedTechnicians`
+- tickets they created
+
+They do **not** automatically see all department tickets.
 
 ---
 
-## 🏗️ Architecture & Project Structure
+## Ticket Workflow
 
 ```
-ServiceDesk Pro/
-├── backend/
-│   ├── src/
-│   │   ├── config/          # MongoDB connection configuration
-│   │   ├── controllers/     # Express route handlers
-│   │   ├── middleware/      # JWT auth, role validation, file upload
-│   │   ├── models/          # Mongoose data schemas (Ticket, User, Asset, SLA, etc.)
-│   │   ├── routes/          # REST API route endpoints
-│   │   ├── scripts/         # Automated seeding scripts (Admin & Managers)
-│   │   ├── services/        # Business logic, Gemini AI & SLA monitoring
-│   │   ├── utils/           # JWT, workflow state transitions, SLA scheduler
-│   │   ├── app.js           # Express application setup & middleware stack
-│   │   └── server.js        # Server bootstrap & background cron initiator
-│   ├── .env.example         # Backend environment variables template
-│   ├── package.json
-│   └── nodemon.json
-│
-├── frontend/
-│   ├── public/              # Static assets and SVG icons
-│   ├── src/
-│   │   ├── components/      # Navbar, Sidebar, BroadcastTicker, Marquee, Logo
-│   │   ├── context/         # AuthContext (JWT session) & ThemeContext (Dark/Light)
-│   │   ├── pages/           # Dashboard, Tickets, CreateTicket, TicketDetails,
-│   │   │                    # Assets, Reports, Users, SLAManagement, Vendors, KB
-│   │   ├── routes/          # Protected & role-guarded React routes
-│   │   ├── services/        # Axios API clients, CSV downloaders, jsPDF generators
-│   │   ├── App.jsx          # Root layout and theme wrapper
-│   │   ├── index.css        # Comprehensive design system & CSS variables
-│   │   └── main.jsx         # Vite entry point
-│   ├── package.json
-│   └── vite.config.js       # Vite bundler configuration & API proxy
-│
-├── uploads/                 # Storage directory for ticket attachments
-├── .env.example             # Project-wide environment template
-├── .gitignore               # Strict ignore rules (ignores .env and node_modules)
-├── package.json             # Root monorepo script runner
-└── README.md                # Project documentation
+Open → Assigned → In Progress → Resolved
+                                      ↓ (technician resolve auto-enters)
+                         Awaiting Manager Approval
+                                      ↓
+                         Approve → Closed
+                         Reject  → In Progress / Reopened
+Closed / Resolved → Reopened → In Progress
 ```
 
+| Role | Allowed actions |
+|------|-----------------|
+| Technician | open→assigned/in_progress, assigned→in_progress, in_progress→resolved (→ awaiting approval), reopened→in_progress. **Cannot close.** |
+| IT Manager | assign/reassign, operational transitions, approve/reject, escalate, reopen |
+| Employee | confirm close / reopen when appropriate |
+| System Admin | full workflow |
+
+Approval fields: `approvalStatus`, `approvedBy`, `approvedAt`, `approvalComment`.
+
+Escalation fields: `isEscalated`, `escalatedBy`, `escalatedAt`, `escalationReason`.
+
 ---
 
-## 🚀 Getting Started
+## SLA
 
-### Prerequisites
-- **Node.js**: v18.0.0 or higher
-- **npm**: v9.0.0 or higher
-- **MongoDB**: Local MongoDB instance (`mongodb://127.0.0.1:27017`) or MongoDB Atlas URI
-- **Google Gemini API Key**: Free API key from [Google AI Studio](https://aistudio.google.com/)
+States: `not_started`, `active`, `at_risk`, `breached`, `met`, `escalated`.
+
+- **Resolution SLA:** `slaDueDate` (business-hours aware)
+- **Response SLA:** `slaResponseDueDate` + `firstResponseAt` (set on first staff comment/work log)
+- **At-risk threshold:** configurable via System Config (`slaAtRiskThresholdPercent`, default **80%**)
+- **Business hours:** working days Mon–Fri, start/end hour, optional holiday list (YYYY-MM-DD), stored in `SystemConfig`
+- Scheduler uses actor **SYSTEM** (`isSystemAction: true`) — never impersonates a human manager
+- Breach / at-risk notifications go to department **`it_manager`** users (legacy `manager` included)
 
 ---
 
-### Step 1: Clone the Repository
+## Assets
+
+Lifecycle: `procurement` → `available` → `assigned` → `maintenance` → `retired`
+
+- **Retired → Available** is **not** a normal transition; requires explicit audited reactivation (`reactivate=true`)
+- Soft-delete/archive preferred over hard delete
+- Assignment validates active users; history recorded
+- Technicians: view + flag maintenance / notes only
+- Asset Managers / System Admins: full lifecycle
+
+---
+
+## Key API routes
+
+| Area | Routes |
+|------|--------|
+| Auth | `POST /api/auth/login`, `register`, `GET /api/auth/me` |
+| Tickets | `GET/POST /api/tickets`, `GET/PATCH /api/tickets/:id`, `PATCH .../assign`, `POST .../approve`, `.../reject`, `.../escalate`, comments, work-logs, attachments |
+| AI | `POST /api/ai/tickets/:id/analyze`, `.../knowledge-suggestions` (ticket access enforced) |
+| Users | `GET/POST /api/users`, `PATCH /api/users/:id` (create/update: System Admin only; IT Manager: read-only directory) |
+| Departments | `/api/departments` |
+| Categories | `/api/categories` |
+| Config | `/api/config` |
+| Audit | `/api/audit` |
+| Dashboard | `/api/dashboard/overview`, `/tickets`, `/technicians`, `/assets` (dept-scoped for managers) |
+| Reports | `/api/reports/tickets`, `/technicians`, `/assets` + CSV exports |
+| Assets | `/api/assets` (+ assign/return) |
+| Knowledge | `/api/knowledge` (employees: published + visibility `all` only) |
+
+---
+
+## Local setup
+
+**Prerequisites:** Node.js 18+, MongoDB, optional Gemini API key.
+
 ```bash
-git clone https://github.com/AbhishikthPaul12/servicedesk_pro.git
-cd servicedesk_pro
-```
+cp .env.example backend/.env
+# Edit MONGO_URI, JWT_SECRET, CLIENT_URL, GEMINI_API_KEY
 
----
+cd backend && npm install
+cd ../frontend && npm install
 
-### Step 2: Configure Environment Variables
-
-Create a `.env` file inside the `backend/` folder:
-```bash
-cp backend/.env.example backend/.env
-```
-
-Edit `backend/.env` with your credentials:
-```env
-PORT=5000
-MONGO_URI=mongodb://127.0.0.1:27017/servicedesk
-JWT_SECRET=your_super_secret_jwt_random_key_here
-CLIENT_URL=http://localhost:3000
-GEMINI_API_KEY=your_google_gemini_api_key_here
-```
-
----
-
-### Step 3: Install Dependencies
-
-Install backend dependencies:
-```bash
 cd backend
-npm install
-```
-
-Install frontend dependencies:
-```bash
-cd ../frontend
-npm install
-```
-
----
-
-### Step 4: Seed Initial Data (Admin, Accounts & SLAs)
-
-From the `backend` folder, run the automated seeders:
-```bash
-# Seed Administrator account
 npm run seed:admin
-
-# Seed Manager, Technician, and Asset Manager accounts
 node src/scripts/seedManagers.js
+
+npm run dev          # API :5000
+cd ../frontend && npm run dev   # UI (see vite.config for port)
 ```
 
-Default credentials created:
-| Role | Email | Password |
-|---|---|---|
-| **System Admin** | `admin@servicedesk.local` | `Admin@123` |
-| **IT Manager** | `manager@servicedesk.local` | `Manager@123` |
-| **Technician** | `tech@servicedesk.local` | `Tech@123` |
-| **Asset Manager** | `assets@servicedesk.local` | `Asset@123` |
-| **Employee** | `employee@servicedesk.local` | `Emp@123` |
+### Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `PORT` | API port (default 5000) |
+| `MONGO_URI` | MongoDB connection string |
+| `JWT_SECRET` | JWT signing secret |
+| `CLIENT_URL` | Frontend origin for CORS |
+| `GEMINI_API_KEY` | Google Gemini for AI features |
+
+### Seed / test accounts
+
+See seeder output. README examples (confirm against your seed scripts):
+
+| Role | Typical email | Notes |
+|------|---------------|-------|
+| System Admin | from `seedAdmin.js` | Full admin |
+| IT Manager | `itmanager@servicedesk.com` | Department should be assigned in DB |
+| Asset Manager | `assetmanager@servicedesk.com` | Assets only |
+
+Assign `department` on managers/technicians/employees in MongoDB or via System Admin user management for department scoping to work.
+
+### Tests & build
+
+```bash
+cd backend && npm test
+cd ../frontend && npm run build
+```
 
 ---
 
-### Step 5: Start Development Servers
+## Architecture notes
 
-You can start both servers using the root scripts or in separate terminal tabs:
-
-**Terminal 1 — Backend API Server (`http://localhost:5000`):**
-```bash
-cd backend
-npm run dev
-```
-
-**Terminal 2 — Frontend Application (`http://localhost:3000`):**
-```bash
-cd frontend
-npm run dev
-```
-
-Open your browser and navigate to **`http://localhost:3000`**.
+- Backend & frontend use `"type": "module"` — **no CommonJS**, **no TypeScript**
+- Authorization helpers: `backend/src/utils/authorization.js`, `roles.js`, `ticketWorkflow.js`
+- Audit: `backend/src/services/auditService.js` + `/api/audit`
+- Internal notes: frontend may send `isInternal`; backend normalizes to `type: "internal_note" | "comment"`
 
 ---
 
-### Step 6: Run Automated Tests
+## Production
 
-Run the backend unit test suite:
-```bash
-cd backend
-npm test
-```
-
-This verifies ticket lifecycle state transitions, asset lifecycle state machine, SLA deadline calculations, and ObjectId validation middleware.
-
----
-
-## 📡 REST API Reference Overview
-
-| Endpoint | Method | Role Allowed | Description |
-|---|---|---|---|
-| `/api/auth/login` | POST | Public | Authenticate user & return JWT token |
-| `/api/auth/register` | POST | Public | Register new employee account |
-| `/api/auth/me` | GET | Authenticated | Retrieve current user profile |
-| `/api/tickets` | GET | Authenticated | List tickets (filtered by role/dept) |
-| `/api/tickets` | POST | Authenticated | Create ticket with optional AI classification |
-| `/api/tickets/:id` | GET | Authenticated | Get ticket details, work logs, comments |
-| `/api/tickets/:id/status` | PATCH | Tech / Managers | Transition ticket lifecycle status |
-| `/api/tickets/:id/assign` | PATCH | IT Manager / Admin | Assign ticket to technician |
-| `/api/tickets/:id/comments` | POST | Authenticated | Add public comment or internal note |
-| `/api/ai/analyze-ticket` | POST | Authenticated | Gemini AI category/priority analysis |
-| `/api/ai/suggest-solution` | POST | Authenticated | Gemini AI solution recommendation |
-| `/api/assets` | GET, POST | Asset Manager / Admin | IT asset registry & management |
-| `/api/slas` | GET, POST | IT Manager / Admin | SLA policy management |
-| `/api/reports/tickets` | GET | IT Manager / Admin | Ticket & SLA analytical data |
-| `/api/reports/tickets/export` | GET | IT Manager / Admin | Authenticated CSV export of tickets |
-| `/api/reports/assets/export` | GET | Asset Manager / Admin | Authenticated CSV export of assets |
-| `/api/reports/technicians/export`| GET | IT Manager / Admin | Authenticated CSV export of technician workload |
-
+- Set strong `JWT_SECRET`, production `MONGO_URI`, restrict CORS `CLIENT_URL`
+- `NODE_ENV=production` hides stack traces in API errors
+- Do not commit `.env` or secrets
+- Serve frontend build via CDN/static host; point API to backend URL (`VITE_API_URL` if used)

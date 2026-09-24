@@ -1,5 +1,34 @@
 import mongoose from "mongoose";
 
+const assignmentHistorySchema = new mongoose.Schema(
+    {
+        user: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true
+        },
+        assignedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null
+        },
+        assignedAt: {
+            type: Date,
+            default: Date.now
+        },
+        returnedAt: {
+            type: Date,
+            default: null
+        },
+        notes: {
+            type: String,
+            trim: true,
+            default: ""
+        }
+    },
+    { _id: false }
+);
+
 const assetSchema = new mongoose.Schema(
     {
         assetTag: {
@@ -53,6 +82,7 @@ const assetSchema = new mongoose.Schema(
         status: {
             type: String,
             enum: [
+                "procurement",
                 "available",
                 "assigned",
                 "maintenance",
@@ -88,6 +118,27 @@ const assetSchema = new mongoose.Schema(
             trim: true,
             maxlength: 2000,
             default: ""
+        },
+
+        assignmentHistory: {
+            type: [assignmentHistorySchema],
+            default: []
+        },
+
+        isArchived: {
+            type: Boolean,
+            default: false
+        },
+
+        archivedAt: {
+            type: Date,
+            default: null
+        },
+
+        archivedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null
         }
     },
     {
@@ -97,6 +148,7 @@ const assetSchema = new mongoose.Schema(
 
 assetSchema.index({ status: 1, type: 1 });
 assetSchema.index({ assignedTo: 1 });
+assetSchema.index({ isArchived: 1 });
 
 const Asset = mongoose.model("Asset", assetSchema);
 

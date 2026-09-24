@@ -114,6 +114,7 @@ export const login = async (req, res, next) => {
 
 export const getMe = async (req, res, next) => {
     try {
+        await req.user.populate("department", "name");
         res.status(200).json({
             success: true,
             user: {

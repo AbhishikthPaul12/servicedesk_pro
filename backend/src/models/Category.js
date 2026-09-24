@@ -1,11 +1,18 @@
 import mongoose from "mongoose";
 
-const departmentSchema = new mongoose.Schema(
+const categorySchema = new mongoose.Schema(
     {
         name: {
             type: String,
-            required: [true, "Department name is required"],
+            required: [true, "Category name is required"],
             unique: true,
+            trim: true,
+            lowercase: true
+        },
+
+        displayName: {
+            type: String,
+            required: true,
             trim: true
         },
 
@@ -25,6 +32,6 @@ const departmentSchema = new mongoose.Schema(
     }
 );
 
-const Department = mongoose.model("Department", departmentSchema);
+const Category = mongoose.model("Category", categorySchema);
 
-export default Department;
+export default Category;

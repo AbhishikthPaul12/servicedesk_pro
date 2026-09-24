@@ -15,6 +15,10 @@ import KnowledgeBase from "../pages/KnowledgeBase";
 import KnowledgeArticle from "../pages/KnowledgeArticle";
 import SLAManagement from "../pages/SLAManagement";
 import VendorManagement from "../pages/VendorManagement";
+import Departments from "../pages/Departments";
+import Categories from "../pages/Categories";
+import SystemConfig from "../pages/SystemConfig";
+import AuditLogs from "../pages/AuditLogs";
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, loading } = useAuth();
@@ -89,7 +93,7 @@ const AppRoutes = () => {
       <Route
         path="/assets"
         element={
-          <ProtectedRoute allowedRoles={["system_admin", "it_manager", "asset_manager"]}>
+          <ProtectedRoute allowedRoles={["system_admin", "it_manager", "asset_manager", "technician"]}>
             <Assets />
           </ProtectedRoute>
         }
@@ -142,8 +146,44 @@ const AppRoutes = () => {
       <Route
         path="/vendors"
         element={
-          <ProtectedRoute allowedRoles={["system_admin", "it_manager", "asset_manager"]}>
+          <ProtectedRoute allowedRoles={["system_admin", "asset_manager"]}>
             <VendorManagement />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/departments"
+        element={
+          <ProtectedRoute allowedRoles={["system_admin"]}>
+            <Departments />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/categories"
+        element={
+          <ProtectedRoute allowedRoles={["system_admin"]}>
+            <Categories />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/config"
+        element={
+          <ProtectedRoute allowedRoles={["system_admin"]}>
+            <SystemConfig />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/audit"
+        element={
+          <ProtectedRoute allowedRoles={["system_admin"]}>
+            <AuditLogs />
           </ProtectedRoute>
         }
       />

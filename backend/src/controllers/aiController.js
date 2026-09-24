@@ -1,9 +1,12 @@
 import Ticket from "../models/Ticket.js";
-import AuditLog from "../models/AuditLog.js";
-import { analyzeTicketWithAI,
-         suggestKnowledgeArticlesWithAI
-        } from "../services/aiService.js";
+import {
+    analyzeTicketWithAI,
+    suggestKnowledgeArticlesWithAI
+} from "../services/aiService.js";
 import KnowledgeArticle from "../models/KnowledgeArticle.js";
+import { canUseTicketAI, canAccessTicket, deny } from "../utils/authorization.js";
+import { normalizeRole } from "../utils/roles.js";
+import { createAuditLog } from "../services/auditService.js";
 
 export const analyzeTicket = async (req, res, next) => {
     try {
@@ -14,6 +17,10 @@ export const analyzeTicket = async (req, res, next) => {
                 success: false,
                 message: "Ticket not found"
             });
+        }
+
+        if (!canAccessTicket(req.user, ticket) || !canUseTicketAI(req.user, ticket)) {
+            return deny(res, "You are not authorized to run AI analysis on this ticket");
         }
 
         const analysis = await analyzeTicketWithAI({
@@ -30,9 +37,10 @@ export const analyzeTicket = async (req, res, next) => {
 
         await ticket.save();
 
-        await AuditLog.create({
+        await createAuditLog({
             ticket: ticket._id,
             user: req.user._id,
+            actorRole: normalizeRole(req.user.role),
             action: "updated",
             description: "AI analysis generated for ticket"
         });
@@ -58,45 +66,50 @@ export const suggestKnowledgeArticles = async (req, res, next) => {
             });
         }
 
+        if (!canAccessTicket(req.user, ticket) || !canUseTicketAI(req.user, ticket)) {
+            return deny(
+                res,
+                "You are not authorized to get knowledge suggestions for this ticket"
+            );
+        }
+
         const searchText = `${ticket.title} ${ticket.description}`.trim();
 
-const visibilityRules = {
-    employee: ["all"],
-    technician: ["all", "technician"],
-    it_manager: ["all", "technician", "manager"],
-    manager: ["all", "technician", "manager"],
-    system_admin: ["all", "technician", "manager", "admin"],
-    admin: ["all", "technician", "manager", "admin"]
-};
+        const visibilityRules = {
+            employee: ["all"],
+            technician: ["all", "technician"],
+            it_manager: ["all", "technician", "manager"],
+            manager: ["all", "technician", "manager"],
+            system_admin: ["all", "technician", "manager", "admin"],
+            admin: ["all", "technician", "manager", "admin"]
+        };
 
-const allowedVisibility =
-    visibilityRules[req.user.role] || ["all"];
+        const role = normalizeRole(req.user.role);
+        const allowedVisibility = visibilityRules[req.user.role] ||
+            visibilityRules[role] ||
+            ["all"];
 
-const baseFilter = {
-    status: "published",
-    visibility: { $in: allowedVisibility }
-};
+        const baseFilter = {
+            status: "published",
+            visibility: { $in: allowedVisibility }
+        };
 
-let articles = await KnowledgeArticle.find({
-    ...baseFilter,
-    $text: {
-        $search: searchText
-    }
-})
-.select("title summary content category tags")
-.sort({
-    score: { $meta: "textScore" }
-})
-.limit(10);
+        let articles = await KnowledgeArticle.find({
+            ...baseFilter,
+            $text: { $search: searchText }
+        })
+            .select("title summary content category tags")
+            .sort({ score: { $meta: "textScore" } })
+            .limit(10);
 
         if (articles.length === 0 && ticket.category) {
-    articles = await KnowledgeArticle.find({
-        ...baseFilter,
-        category: ticket.category
-    })
-    .select("title summary content category tags")
-    .limit(10);
-}
+            articles = await KnowledgeArticle.find({
+                ...baseFilter,
+                category: ticket.category
+            })
+                .select("title summary content category tags")
+                .limit(10);
+        }
 
         const suggestions = await suggestKnowledgeArticlesWithAI({
             title: ticket.title,
@@ -105,10 +118,10 @@ let articles = await KnowledgeArticle.find({
         });
 
         ticket.aiKnowledgeSuggestions = suggestions.suggestions.map((suggestion) => ({
-    articleId: suggestion.articleId,
-    relevanceScore: suggestion.relevanceScore,
-    reason: suggestion.reason
-}));
+            articleId: suggestion.articleId,
+            relevanceScore: suggestion.relevanceScore,
+            reason: suggestion.reason
+        }));
 
         await ticket.save();
 
@@ -118,15 +131,10 @@ let articles = await KnowledgeArticle.find({
 
         const suggestedArticles = await KnowledgeArticle.find({
             _id: { $in: suggestedArticleIds }
-        }).select(
-            "title summary category tags status visibility"
-        );
+        }).select("title summary category tags status visibility");
 
         const articleMap = new Map(
-            suggestedArticles.map((article) => [
-                article._id.toString(),
-                article
-            ])
+            suggestedArticles.map((article) => [article._id.toString(), article])
         );
 
         const enrichedSuggestions = suggestions.suggestions
@@ -137,9 +145,10 @@ let articles = await KnowledgeArticle.find({
             }))
             .filter((suggestion) => suggestion.article);
 
-        await AuditLog.create({
+        await createAuditLog({
             ticket: ticket._id,
             user: req.user._id,
+            actorRole: normalizeRole(req.user.role),
             action: "updated",
             description: "AI knowledge-base suggestions generated for ticket"
         });
@@ -149,7 +158,6 @@ let articles = await KnowledgeArticle.find({
             message: "Knowledge-base suggestions generated successfully",
             suggestions: enrichedSuggestions
         });
-
     } catch (error) {
         next(error);
     }

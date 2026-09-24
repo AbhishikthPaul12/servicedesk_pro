@@ -17,6 +17,10 @@ import userRoutes from "./routes/userRoutes.js";
 import savedFilterRoutes from "./routes/savedFilterRoutes.js";
 import slaRoutes from "./routes/slaRoutes.js";
 import vendorRoutes from "./routes/vendorRoutes.js";
+import departmentRoutes from "./routes/departmentRoutes.js";
+import categoryRoutes from "./routes/categoryRoutes.js";
+import configRoutes from "./routes/configRoutes.js";
+import auditRoutes from "./routes/auditRoutes.js";
 
 import { notFoundHandler, errorHandler } from "./middleware/errorMiddleware.js";
 
@@ -78,6 +82,10 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/sla", slaRoutes);
 app.use("/api/vendors", vendorRoutes);
+app.use("/api/departments", departmentRoutes);
+app.use("/api/categories", categoryRoutes);
+app.use("/api/config", configRoutes);
+app.use("/api/audit", auditRoutes);
 
 // Central error handling
 app.use(notFoundHandler);

@@ -1,24 +1,31 @@
 import Ticket from "../models/Ticket.js";
 import Asset from "../models/Asset.js";
 import User from "../models/User.js";
+import { isITManager, isSystemAdmin } from "../utils/roles.js";
 
-export const getTicketReport = async ({
-    startDate,
-    endDate
-}) => {
-    const match = {};
+export const buildDeptMatch = (user, extra = {}, requestedDepartment = null) => {
+    const match = { ...extra };
+    if (isITManager(user)) {
+        if (!user.department) {
+            match._id = null;
+        } else {
+            match.department = user.department;
+        }
+    } else if (isSystemAdmin(user) && requestedDepartment) {
+        match.department = requestedDepartment;
+    }
+    return match;
+};
+
+export const getTicketReport = async ({ startDate, endDate, user, department }) => {
+    const match = buildDeptMatch(user, {}, department);
 
     if (startDate || endDate) {
         match.createdAt = {};
-
-        if (startDate) {
-            match.createdAt.$gte = new Date(startDate);
-        }
-
+        if (startDate) match.createdAt.$gte = new Date(startDate);
         if (endDate) {
             const end = new Date(endDate);
             end.setHours(23, 59, 59, 999);
-
             match.createdAt.$lte = end;
         }
     }
@@ -28,55 +35,27 @@ export const getTicketReport = async ({
         statusBreakdown,
         priorityBreakdown,
         categoryBreakdown,
-        rawSlaBreakdown
+        rawSlaBreakdown,
+        escalations,
+        reopened,
+        pendingApprovals
     ] = await Promise.all([
         Ticket.countDocuments(match),
-
         Ticket.aggregate([
             { $match: match },
-            {
-                $group: {
-                    _id: "$status",
-                    count: { $sum: 1 }
-                }
-            },
-            {
-                $sort: {
-                    count: -1
-                }
-            }
+            { $group: { _id: "$status", count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
         ]),
-
         Ticket.aggregate([
             { $match: match },
-            {
-                $group: {
-                    _id: "$priority",
-                    count: { $sum: 1 }
-                }
-            },
-            {
-                $sort: {
-                    count: -1
-                }
-            }
+            { $group: { _id: "$priority", count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
         ]),
-
         Ticket.aggregate([
             { $match: match },
-            {
-                $group: {
-                    _id: "$category",
-                    count: { $sum: 1 }
-                }
-            },
-            {
-                $sort: {
-                    count: -1
-                }
-            }
+            { $group: { _id: "$category", count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
         ]),
-
         Ticket.aggregate([
             { $match: match },
             {
@@ -91,7 +70,13 @@ export const getTicketReport = async ({
                     count: { $sum: 1 }
                 }
             }
-        ])
+        ]),
+        Ticket.countDocuments({ ...match, isEscalated: true }),
+        Ticket.countDocuments({ ...match, status: "reopened" }),
+        Ticket.countDocuments({
+            ...match,
+            status: "awaiting_manager_approval"
+        })
     ]);
 
     const slaBreakdown = rawSlaBreakdown.map((item) => ({
@@ -99,49 +84,48 @@ export const getTicketReport = async ({
         count: item.count
     }));
 
+    const resolved = await Ticket.find({
+        ...match,
+        resolvedAt: { $ne: null }
+    }).select("createdAt resolvedAt");
+
+    let averageResolutionHours = null;
+    if (resolved.length > 0) {
+        const totalMs = resolved.reduce(
+            (sum, t) => sum + (new Date(t.resolvedAt) - new Date(t.createdAt)),
+            0
+        );
+        averageResolutionHours = Number(
+            (totalMs / resolved.length / 3600000).toFixed(2)
+        );
+    }
+
     return {
         totalTickets,
         statusBreakdown,
         priorityBreakdown,
         categoryBreakdown,
-        slaBreakdown
+        slaBreakdown,
+        escalations,
+        reopened,
+        pendingApprovals,
+        averageResolutionHours,
+        scoped: isITManager(user)
     };
 };
 
 export const getAssetReport = async () => {
-    const [
-        totalAssets,
-        statusBreakdown,
-        typeBreakdown
-    ] = await Promise.all([
-        Asset.countDocuments(),
-
+    const [totalAssets, statusBreakdown, typeBreakdown] = await Promise.all([
+        Asset.countDocuments({ isArchived: { $ne: true } }),
         Asset.aggregate([
-            {
-                $group: {
-                    _id: "$status",
-                    count: { $sum: 1 }
-                }
-            },
-            {
-                $sort: {
-                    count: -1
-                }
-            }
+            { $match: { isArchived: { $ne: true } } },
+            { $group: { _id: "$status", count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
         ]),
-
         Asset.aggregate([
-            {
-                $group: {
-                    _id: "$type",
-                    count: { $sum: 1 }
-                }
-            },
-            {
-                $sort: {
-                    count: -1
-                }
-            }
+            { $match: { isArchived: { $ne: true } } },
+            { $group: { _id: "$type", count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
         ])
     ]);
 
@@ -152,21 +136,57 @@ export const getAssetReport = async () => {
     };
 };
 
-export const getTechnicianReport = async () => {
-    const technicians = await User.find({
-        role: { $in: ["technician", "it_manager", "manager", "system_admin", "admin"] }
-    })
-        .select("name email role department")
+export const getTechnicianReport = async (user) => {
+    const techFilter = {
+        role: "technician",
+        isActive: true
+    };
+
+    if (isITManager(user)) {
+        if (!user.department) {
+            return [];
+        }
+        techFilter.department = user.department;
+    }
+
+    const technicians = await User.find(techFilter)
+        .select("name email role department isActive")
         .populate("department", "name");
+
+    const ticketDept =
+        isITManager(user) && user.department
+            ? { department: user.department }
+            : {};
 
     const report = await Promise.all(
         technicians.map(async (tech) => {
-            const [assigned, inProgress, resolved, closed] = await Promise.all([
-                Ticket.countDocuments({ assignedTo: tech._id }),
-                Ticket.countDocuments({ assignedTo: tech._id, status: "in_progress" }),
-                Ticket.countDocuments({ assignedTo: tech._id, status: "resolved" }),
-                Ticket.countDocuments({ assignedTo: tech._id, status: "closed" })
-            ]);
+            const [assigned, inProgress, resolved, closed, breached] =
+                await Promise.all([
+                    Ticket.countDocuments({
+                        assignedTo: tech._id,
+                        ...ticketDept
+                    }),
+                    Ticket.countDocuments({
+                        assignedTo: tech._id,
+                        status: "in_progress",
+                        ...ticketDept
+                    }),
+                    Ticket.countDocuments({
+                        assignedTo: tech._id,
+                        status: { $in: ["resolved", "awaiting_manager_approval"] },
+                        ...ticketDept
+                    }),
+                    Ticket.countDocuments({
+                        assignedTo: tech._id,
+                        status: "closed",
+                        ...ticketDept
+                    }),
+                    Ticket.countDocuments({
+                        assignedTo: tech._id,
+                        slaStatus: "breached",
+                        ...ticketDept
+                    })
+                ]);
 
             return {
                 technician: {
@@ -174,15 +194,19 @@ export const getTechnicianReport = async () => {
                     name: tech.name,
                     email: tech.email,
                     role: tech.role,
-                    department: tech.department ? tech.department.name : null
+                    department: tech.department ? tech.department.name : null,
+                    isActive: tech.isActive
                 },
                 assigned,
                 inProgress,
                 resolved,
-                closed
+                closed,
+                breached
             };
         })
     );
 
     return report;
 };
+
+

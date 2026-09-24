@@ -41,7 +41,15 @@ export const updateTicketValidator = [
         .withMessage("Invalid priority"),
     body("status")
         .optional()
-        .isIn(["open", "assigned", "in_progress", "resolved", "closed", "reopened"])
+        .isIn([
+            "open",
+            "assigned",
+            "in_progress",
+            "resolved",
+            "awaiting_manager_approval",
+            "closed",
+            "reopened"
+        ])
         .withMessage("Invalid status"),
     body("resolution")
         .optional()
@@ -63,7 +71,14 @@ export const createCommentValidator = [
     body("type")
         .optional()
         .isIn(["comment", "internal_note"])
-        .withMessage("Invalid comment type. Must be 'comment' or 'internal_note'")
+        .withMessage("Invalid comment type. Must be 'comment' or 'internal_note'"),
+    body("isInternal")
+        .optional()
+        .customSanitizer((value) => {
+            if (value === true || value === "true") return true;
+            if (value === false || value === "false") return false;
+            return value;
+        })
 ];
 
 export const createWorkLogValidator = [

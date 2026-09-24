@@ -5,13 +5,19 @@ const auditLogSchema = new mongoose.Schema(
         ticket: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Ticket",
-            required: true
+            required: false,
+            default: null
         },
 
         user: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             required: false,
+            default: null
+        },
+
+        actorRole: {
+            type: String,
             default: null
         },
 
@@ -22,19 +28,17 @@ const auditLogSchema = new mongoose.Schema(
 
         action: {
             type: String,
-            required: true,
-            enum: [
-                "created",
-                "updated",
-                "assigned",
-                "status_changed",
-                "commented",
-                "resolved",
-                "closed",
-                "reopened",
-                "escalated",
-                "sla_breached"
-            ]
+            required: true
+        },
+
+        entity: {
+            type: String,
+            default: "ticket"
+        },
+
+        entityId: {
+            type: mongoose.Schema.Types.Mixed,
+            default: null
         },
 
         field: {
@@ -56,6 +60,11 @@ const auditLogSchema = new mongoose.Schema(
             type: String,
             trim: true,
             default: ""
+        },
+
+        metadata: {
+            type: mongoose.Schema.Types.Mixed,
+            default: {}
         }
     },
     {
@@ -65,6 +74,8 @@ const auditLogSchema = new mongoose.Schema(
 
 auditLogSchema.index({ ticket: 1, createdAt: -1 });
 auditLogSchema.index({ user: 1, createdAt: -1 });
+auditLogSchema.index({ entity: 1, action: 1, createdAt: -1 });
+auditLogSchema.index({ createdAt: -1 });
 
 const AuditLog = mongoose.model("AuditLog", auditLogSchema);
 

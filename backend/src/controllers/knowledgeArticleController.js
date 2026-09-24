@@ -12,14 +12,20 @@ export const createArticle = async (req, res, next) => {
             visibility
         } = req.body;
 
+        // Technicians create drafts only; managers/admins may publish
+        let articleStatus = status || "draft";
+        if (req.user.role === "technician") {
+            articleStatus = "draft";
+        }
+
         const article = await KnowledgeArticle.create({
             title,
             content,
             summary,
             category,
             tags,
-            status,
-            visibility,
+            status: articleStatus,
+            visibility: visibility || "all",
             createdBy: req.user._id
         });
 
@@ -242,25 +248,25 @@ export const updateArticle = async (req, res, next) => {
 
         /*
          * Publishing and archiving are restricted
-         * to admin/manager.
+         * to system_admin / it_manager.
          */
         if (
             req.body.status !== undefined &&
-            !["admin", "manager"].includes(req.user.role)
+            !["system_admin", "admin", "it_manager", "manager"].includes(req.user.role)
         ) {
             return res.status(403).json({
                 success: false,
-                message: "Only admin or manager can change article status"
+                message: "Only System Admin or IT Manager can change article status"
             });
         }
 
         if (
             req.body.visibility !== undefined &&
-            !["admin", "manager"].includes(req.user.role)
+            !["system_admin", "admin", "it_manager", "manager"].includes(req.user.role)
         ) {
             return res.status(403).json({
                 success: false,
-                message: "Only admin or manager can change article visibility"
+                message: "Only System Admin or IT Manager can change article visibility"
             });
         }
 

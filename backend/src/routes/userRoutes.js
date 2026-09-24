@@ -2,13 +2,17 @@ import express from "express";
 import {
     getUsers,
     getUserById,
-    updateUser
+    updateUser,
+    createUser
 } from "../controllers/userController.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { authorize } from "../middleware/roleMiddleware.js";
 import { validateObjectId } from "../middleware/validateObjectId.js";
 import { validateRequest } from "../middleware/validateRequest.js";
-import { updateUserValidator } from "../validators/userValidators.js";
+import {
+    updateUserValidator,
+    createUserValidator
+} from "../validators/userValidators.js";
 
 const router = express.Router();
 
@@ -18,6 +22,14 @@ router.get(
     "/",
     authorize("system_admin", "admin", "it_manager", "manager"),
     getUsers
+);
+
+router.post(
+    "/",
+    authorize("system_admin", "admin"),
+    createUserValidator,
+    validateRequest,
+    createUser
 );
 
 router.get(
@@ -30,7 +42,7 @@ router.get(
 router.patch(
     "/:id",
     validateObjectId("id"),
-    authorize("system_admin", "admin", "it_manager", "manager"),
+    authorize("system_admin", "admin"),
     updateUserValidator,
     validateRequest,
     updateUser

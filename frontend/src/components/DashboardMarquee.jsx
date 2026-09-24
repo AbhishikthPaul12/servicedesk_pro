@@ -1,41 +1,42 @@
 import React from "react";
-import { Activity, Bell, AlertTriangle, CheckCircle2, ShieldCheck, Flame } from "lucide-react";
+import { Activity, Bell, AlertTriangle, CheckCircle2, ShieldCheck } from "lucide-react";
 
+/** Demo/sample marquee content — clearly labeled; not production metrics. */
 const liveStreamUpdates = [
   {
     type: "sla",
     icon: <AlertTriangle size={13} style={{ color: "var(--warning)" }} />,
-    tag: "SLA ALERT",
+    tag: "SAMPLE",
     tagClass: "tag-warning",
-    msg: "Ticket #1034 (Email Server Outage) is at 80% resolution window — technician assigned."
+    msg: "Sample: SLA at-risk and breach alerts appear here when triggered by the monitor."
   },
   {
     type: "ai",
     icon: <ShieldCheck size={13} style={{ color: "var(--primary)" }} />,
-    tag: "AI TRIAGE",
+    tag: "SAMPLE",
     tagClass: "tag-primary",
-    msg: "Gemini AI auto-routed 4 network routing requests to Tier-2 Engineering."
+    msg: "Sample: AI triage runs on demand from ticket details for authorized staff."
   },
   {
     type: "asset",
     icon: <Activity size={13} style={{ color: "var(--info)" }} />,
-    tag: "ASSET UPDATE",
+    tag: "SAMPLE",
     tagClass: "tag-info",
-    msg: "Dell Latitude 5450 fleet firmware security update distributed across 18 endpoints."
+    msg: "Sample: Live asset and vendor events are managed in Asset & Vendor modules."
   },
   {
     type: "resolved",
     icon: <CheckCircle2 size={13} style={{ color: "var(--success)" }} />,
-    tag: "RESOLVED",
+    tag: "SAMPLE",
     tagClass: "tag-success",
-    msg: "VPN Gateway Latency incident resolved in 18 minutes (SLA Target: 45 min)."
+    msg: "Sample: Use the dashboard KPI cards above for real ticket and SLA counts."
   },
   {
     type: "vendor",
     icon: <Bell size={13} style={{ color: "var(--accent, #8b5cf6)" }} />,
-    tag: "VENDOR CONTRACT",
+    tag: "SAMPLE",
     tagClass: "tag-purple",
-    msg: "Cloudflare Enterprise contract renewal window opens in 30 days."
+    msg: "Sample stream — not live production telemetry."
   }
 ];
 
@@ -44,7 +45,7 @@ const DashboardMarquee = () => {
     <div className="dash-marquee-card">
       <div className="dash-marquee-header">
         <span className="dash-marquee-live-dot" />
-        <span className="dash-marquee-title">LIVE INCIDENT & OPS STREAM</span>
+        <span className="dash-marquee-title">OPS STREAM (DEMO / SAMPLE)</span>
       </div>
 
       <div className="dash-marquee-track-container">

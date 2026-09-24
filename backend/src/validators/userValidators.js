@@ -12,11 +12,17 @@ export const createUserValidator = [
         .normalizeEmail(),
     body("password")
         .notEmpty().withMessage("Password is required")
-        .isLength({ min: 6 }).withMessage("Password must be at least 6 characters"),
+        .isLength({ min: 8 }).withMessage("Password must be at least 8 characters"),
     body("role")
         .notEmpty().withMessage("Role is required")
-        .isIn(["employee", "technician", "it_manager", "manager", "asset_manager", "system_admin", "admin"])
-        .withMessage("Invalid role specified")
+        .isIn(["employee", "technician", "it_manager", "asset_manager", "system_admin"])
+        .withMessage("Invalid role specified"),
+    body("department")
+        .optional({ nullable: true, checkFalsy: true })
+        .isMongoId().withMessage("Invalid department ID"),
+    body("isActive")
+        .optional()
+        .isBoolean().withMessage("isActive must be a boolean value")
 ];
 
 export const updateUserValidator = [
@@ -31,8 +37,11 @@ export const updateUserValidator = [
         .normalizeEmail(),
     body("role")
         .optional()
-        .isIn(["employee", "technician", "it_manager", "manager", "asset_manager", "system_admin", "admin"])
+        .isIn(["employee", "technician", "it_manager", "asset_manager", "system_admin"])
         .withMessage("Invalid role specified"),
+    body("department")
+        .optional({ nullable: true, checkFalsy: true })
+        .isMongoId().withMessage("Invalid department ID"),
     body("isActive")
         .optional()
         .isBoolean().withMessage("isActive must be a boolean value")

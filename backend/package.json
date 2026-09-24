@@ -7,7 +7,8 @@
     "test": "node --test tests/workflow.test.js",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "seed:admin": "node src/scripts/seedAdmin.js"
+    "seed:admin": "node src/scripts/seedAdmin.js",
+    "seed:managers": "node src/scripts/seedManagers.js"
   },
   "keywords": [
     "mern",

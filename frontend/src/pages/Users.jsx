@@ -1,25 +1,54 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { getUsers, updateUser } from "../services/userService";
-import { Users as UsersIcon, Search, Shield, CheckCircle, XCircle } from "lucide-react";
+import { getUsers, updateUser, createUser } from "../services/userService";
+import API from "../services/api";
+import { getRoleLabel } from "../utils/roles";
+import { Search, CheckCircle, XCircle, UserPlus } from "lucide-react";
 
 const Users = () => {
-  const { isSystemAdmin } = useAuth();
+  const { isSystemAdmin, isITManager } = useAuth();
   const [users, setUsers] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
-  // Edit user role modal
   const [selectedUser, setSelectedUser] = useState(null);
   const [newRole, setNewRole] = useState("employee");
+  const [editDepartment, setEditDepartment] = useState("");
   const [isActive, setIsActive] = useState(true);
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "employee",
+    department: ""
+  });
+
+  const roleNeedsDepartment = (role) =>
+    ["employee", "technician", "it_manager"].includes(role);
 
   useEffect(() => {
     fetchUsers();
   }, [search, roleFilter, page]);
+
+  useEffect(() => {
+    if (isSystemAdmin) {
+      API.get("/departments")
+        .then((res) => {
+          if (res.data.success) {
+            setDepartments(
+              (res.data.departments || []).filter((d) => d.isActive !== false)
+            );
+          }
+        })
+        .catch((err) => console.error(err));
+    }
+  }, [isSystemAdmin]);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -31,17 +60,33 @@ const Users = () => {
       }
     } catch (err) {
       console.error(err);
+      if (err.response?.data?.message) {
+        alert(err.response.data.message);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSaveUser = async () => {
-    if (!selectedUser) return;
-    try {
-      const updates = { isActive };
-      if (isSystemAdmin) updates.role = newRole;
+  const openManage = (u) => {
+    setSelectedUser(u);
+    setNewRole(u.role === "admin" ? "system_admin" : u.role === "manager" ? "it_manager" : u.role);
+    setIsActive(u.isActive);
+    setEditDepartment(u.department?._id || u.department || "");
+  };
 
+  const handleSaveUser = async () => {
+    if (!selectedUser || !isSystemAdmin) return;
+    if (roleNeedsDepartment(newRole) && !editDepartment) {
+      alert("Department is required for Employee, Technician, and IT Manager roles.");
+      return;
+    }
+    try {
+      const updates = {
+        isActive,
+        role: newRole,
+        department: editDepartment || null
+      };
       const res = await updateUser(selectedUser._id, updates);
       if (res.success) {
         setSelectedUser(null);
@@ -52,13 +97,52 @@ const Users = () => {
     }
   };
 
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    if (roleNeedsDepartment(createForm.role) && !createForm.department) {
+      alert("Department is required for Employee, Technician, and IT Manager roles.");
+      return;
+    }
+    try {
+      const payload = {
+        ...createForm,
+        department: createForm.department || undefined
+      };
+      const res = await createUser(payload);
+      if (res.success) {
+        setShowCreate(false);
+        setCreateForm({
+          name: "",
+          email: "",
+          password: "",
+          role: "employee",
+          department: ""
+        });
+        fetchUsers();
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to create user");
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
         <div>
-          <h1 className="page-title">User & Role Administration</h1>
-          <p style={{ color: "#64748b", fontSize: "0.875rem" }}>Manage platform access, assigned roles, and department affiliations.</p>
+          <h1 className="page-title">
+            {isITManager && !isSystemAdmin ? "Team Directory" : "User & Role Administration"}
+          </h1>
+          <p style={{ color: "#64748b", fontSize: "0.875rem" }}>
+            {isITManager && !isSystemAdmin
+              ? "Read-only view of technicians and staff in your department."
+              : "Manage platform access, assigned roles, and department affiliations."}
+          </p>
         </div>
+        {isSystemAdmin && (
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+            <UserPlus size={16} /> Create User
+          </button>
+        )}
       </div>
 
       <div className="filters-bar">
@@ -93,7 +177,7 @@ const Users = () => {
                 <th>Assigned Role</th>
                 <th>Department</th>
                 <th>Status</th>
-                <th>Action</th>
+                {isSystemAdmin && <th>Action</th>}
               </tr>
             </thead>
             <tbody>
@@ -106,8 +190,8 @@ const Users = () => {
                   <tr key={u._id}>
                     <td style={{ fontWeight: 600 }}>{u.name}</td>
                     <td>{u.email}</td>
-                    <td><span className="badge badge-role">{u.role}</span></td>
-                    <td>{u.department ? u.department.name : "General"}</td>
+                    <td><span className="badge badge-role">{getRoleLabel(u.role)}</span></td>
+                    <td>{u.department ? u.department.name : "—"}</td>
                     <td>
                       {u.isActive ? (
                         <span className="badge badge-low" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
@@ -119,15 +203,17 @@ const Users = () => {
                         </span>
                       )}
                     </td>
-                    <td>
-                      <button
-                        onClick={() => { setSelectedUser(u); setNewRole(u.role); setIsActive(u.isActive); }}
-                        className="btn btn-secondary"
-                        style={{ padding: "4px 10px", fontSize: "0.8rem" }}
-                      >
-                        Manage Role
-                      </button>
-                    </td>
+                    {isSystemAdmin && (
+                      <td>
+                        <button
+                          onClick={() => openManage(u)}
+                          className="btn btn-secondary"
+                          style={{ padding: "4px 10px", fontSize: "0.8rem" }}
+                        >
+                          Manage
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
@@ -142,8 +228,7 @@ const Users = () => {
         </div>
       </div>
 
-      {/* MANAGE USER MODAL */}
-      {selectedUser && (
+      {selectedUser && isSystemAdmin && (
         <div className="modal-backdrop">
           <div className="modal-content">
             <div className="modal-header">
@@ -151,18 +236,33 @@ const Users = () => {
               <button className="close-btn" onClick={() => setSelectedUser(null)}>×</button>
             </div>
 
-            {isSystemAdmin && (
-              <div className="form-group">
-                <label className="form-label">System Role</label>
-                <select className="form-select" value={newRole} onChange={(e) => setNewRole(e.target.value)}>
-                  <option value="employee">Employee</option>
-                  <option value="technician">Technician</option>
-                  <option value="it_manager">IT Manager</option>
-                  <option value="asset_manager">Asset Manager</option>
-                  <option value="system_admin">System Admin</option>
-                </select>
-              </div>
-            )}
+            <div className="form-group">
+              <label className="form-label">System Role</label>
+              <select className="form-select" value={newRole} onChange={(e) => setNewRole(e.target.value)}>
+                <option value="employee">Employee</option>
+                <option value="technician">Technician</option>
+                <option value="it_manager">IT Manager</option>
+                <option value="asset_manager">Asset Manager</option>
+                <option value="system_admin">System Admin</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">
+                Department {roleNeedsDepartment(newRole) ? "*" : "(optional)"}
+              </label>
+              <select
+                className="form-select"
+                value={editDepartment}
+                onChange={(e) => setEditDepartment(e.target.value)}
+                required={roleNeedsDepartment(newRole)}
+              >
+                <option value="">Select department...</option>
+                {departments.map((d) => (
+                  <option key={d._id} value={d._id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
 
             <div className="form-group">
               <label className="form-label">Account Status</label>
@@ -176,6 +276,70 @@ const Users = () => {
               <button className="btn btn-secondary" onClick={() => setSelectedUser(null)}>Cancel</button>
               <button onClick={handleSaveUser} className="btn btn-primary">Save Changes</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showCreate && isSystemAdmin && (
+        <div className="modal-backdrop">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3 className="modal-title">Create User</h3>
+              <button className="close-btn" onClick={() => setShowCreate(false)}>×</button>
+            </div>
+            <form onSubmit={handleCreateUser}>
+              <div className="form-group">
+                <label className="form-label">Name</label>
+                <input className="form-input" required minLength={2} value={createForm.name}
+                  onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Email</label>
+                <input type="email" className="form-input" required value={createForm.email}
+                  onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Password (min 8)</label>
+                <input type="password" className="form-input" required minLength={8} value={createForm.password}
+                  onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Role</label>
+                <select className="form-select" value={createForm.role}
+                  onChange={(e) => setCreateForm({ ...createForm, role: e.target.value })}>
+                  <option value="employee">Employee</option>
+                  <option value="technician">Technician</option>
+                  <option value="it_manager">IT Manager</option>
+                  <option value="asset_manager">Asset Manager</option>
+                  <option value="system_admin">System Admin</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">
+                  Department {roleNeedsDepartment(createForm.role) ? "*" : "(optional)"}
+                </label>
+                <select
+                  className="form-select"
+                  value={createForm.department}
+                  onChange={(e) => setCreateForm({ ...createForm, department: e.target.value })}
+                  required={roleNeedsDepartment(createForm.role)}
+                >
+                  <option value="">Select department...</option>
+                  {departments.map((d) => (
+                    <option key={d._id} value={d._id}>{d.name}</option>
+                  ))}
+                </select>
+                {departments.length === 0 && (
+                  <p style={{ fontSize: "0.8rem", color: "var(--danger)", marginTop: 6 }}>
+                    No active departments found. Create one under Departments first.
+                  </p>
+                )}
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Create</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

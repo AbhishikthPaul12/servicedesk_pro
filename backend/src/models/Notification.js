@@ -20,7 +20,11 @@ const notificationSchema = new mongoose.Schema(
                 "ticket_assigned",
                 "ticket_status_changed",
                 "sla_breached",
+                "sla_at_risk",
                 "ticket_commented",
+                "ticket_escalated",
+                "approval_required",
+                "asset_assigned",
                 "system"
             ],
             required: true

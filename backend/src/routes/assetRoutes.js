@@ -23,9 +23,33 @@ const router = express.Router();
 
 router.use(protect);
 
-router.get("/", getAssets);
+// GET: system_admin, asset_manager, it_manager (read), technician (limited)
+router.get(
+    "/",
+    authorize(
+        "system_admin",
+        "admin",
+        "asset_manager",
+        "it_manager",
+        "manager",
+        "technician"
+    ),
+    getAssets
+);
 
-router.get("/:id", validateObjectId("id"), getAssetById);
+router.get(
+    "/:id",
+    validateObjectId("id"),
+    authorize(
+        "system_admin",
+        "admin",
+        "asset_manager",
+        "it_manager",
+        "manager",
+        "technician"
+    ),
+    getAssetById
+);
 
 router.post(
     "/",
@@ -38,7 +62,7 @@ router.post(
 router.patch(
     "/:id",
     validateObjectId("id"),
-    authorize("system_admin", "admin", "asset_manager"),
+    authorize("system_admin", "admin", "asset_manager", "technician"),
     updateAssetValidator,
     validateRequest,
     updateAsset

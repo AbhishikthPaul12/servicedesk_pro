@@ -11,25 +11,16 @@ import {
   BookOpen,
   ShieldCheck,
   Building2,
+  ScrollText,
+  Settings,
+  FolderTree,
 } from "lucide-react";
 import Logo from "./Logo";
 import { motion } from "framer-motion";
+import { getRoleLabel } from "../utils/roles";
 
 const Sidebar = () => {
   const { user, isSystemAdmin, isITManager, isTechnician, isEmployee, isAssetManager, role } = useAuth();
-
-  const getRoleDisplayName = (r) => {
-    switch (r) {
-      case "system_admin":
-      case "admin": return "System Admin";
-      case "it_manager":
-      case "manager": return "IT Manager";
-      case "technician": return "Technician";
-      case "employee": return "Employee";
-      case "asset_manager": return "Asset Manager";
-      default: return r;
-    }
-  };
 
   const sidebarVariants = {
     hidden: { x: -60, opacity: 0 },
@@ -47,14 +38,18 @@ const Sidebar = () => {
 
   const navItems = [
     { to: "/dashboard", icon: <LayoutDashboard size={19} className="sidebar-item-icon" />, label: "Dashboard", show: true },
-    { to: "/tickets/new", icon: <PlusCircle size={19} className="sidebar-item-icon" />, label: "Create Ticket", show: isEmployee },
+    { to: "/tickets/new", icon: <PlusCircle size={19} className="sidebar-item-icon" />, label: "Create Ticket", show: isEmployee || isTechnician || isITManager || isSystemAdmin },
     { to: "/tickets", icon: <Ticket size={19} className="sidebar-item-icon" />, label: isEmployee ? "My Tickets" : isTechnician ? "Assigned Tickets" : "Helpdesk Tickets", show: !isAssetManager },
     { to: "/knowledge", icon: <BookOpen size={19} className="sidebar-item-icon" />, label: "Knowledge Base", show: true },
-    { to: "/assets", icon: <HardDrive size={19} className="sidebar-item-icon" />, label: "Asset Management", show: isSystemAdmin || isITManager || isAssetManager },
-    { to: "/vendors", icon: <Building2 size={19} className="sidebar-item-icon" />, label: "Vendor Management", show: isSystemAdmin || isITManager || isAssetManager },
+    { to: "/assets", icon: <HardDrive size={19} className="sidebar-item-icon" />, label: "Asset Management", show: isSystemAdmin || isITManager || isAssetManager || isTechnician },
+    { to: "/vendors", icon: <Building2 size={19} className="sidebar-item-icon" />, label: "Vendor Management", show: isSystemAdmin || isAssetManager },
     { to: "/reports", icon: <BarChart3 size={19} className="sidebar-item-icon" />, label: "Reports & Analytics", show: isSystemAdmin || isITManager || isAssetManager },
     { to: "/sla", icon: <ShieldCheck size={19} className="sidebar-item-icon" />, label: "SLA Policies", show: isSystemAdmin },
-    { to: "/users", icon: <Users size={19} className="sidebar-item-icon" />, label: "User Directory", show: isSystemAdmin || isITManager },
+    { to: "/departments", icon: <FolderTree size={19} className="sidebar-item-icon" />, label: "Departments", show: isSystemAdmin },
+    { to: "/categories", icon: <FolderTree size={19} className="sidebar-item-icon" />, label: "Categories", show: isSystemAdmin },
+    { to: "/config", icon: <Settings size={19} className="sidebar-item-icon" />, label: "System Config", show: isSystemAdmin },
+    { to: "/audit", icon: <ScrollText size={19} className="sidebar-item-icon" />, label: "Audit Logs", show: isSystemAdmin },
+    { to: "/users", icon: <Users size={19} className="sidebar-item-icon" />, label: isITManager && !isSystemAdmin ? "Team Directory" : "User Management", show: isSystemAdmin || isITManager },
   ];
 
   return (
@@ -92,7 +87,7 @@ const Sidebar = () => {
         </div>
         <div className="sidebar-user-info">
           <div className="sidebar-user-name" title={user?.name}>{user?.name}</div>
-          <div className="sidebar-user-role">{getRoleDisplayName(role)}</div>
+          <div className="sidebar-user-role">{getRoleLabel(role)}</div>
         </div>
       </motion.div>
     </motion.aside>

@@ -25,18 +25,42 @@ export const assignTicket = async (id, technicianId) => {
   return res.data;
 };
 
+export const approveTicket = async (id, comment = "") => {
+  const res = await API.post(`/tickets/${id}/approve`, { comment });
+  return res.data;
+};
+
+export const rejectTicket = async (id, comment = "", reopenTo = "in_progress") => {
+  const res = await API.post(`/tickets/${id}/reject`, { comment, reopenTo });
+  return res.data;
+};
+
+export const escalateTicket = async (id, reason) => {
+  const res = await API.post(`/tickets/${id}/escalate`, { reason });
+  return res.data;
+};
+
 export const addComment = async (ticketId, commentData, files = []) => {
+  const type =
+    commentData.type ||
+    (commentData.isInternal ? "internal_note" : "comment");
+
   if (files.length > 0) {
     const formData = new FormData();
     formData.append("content", commentData.content);
-    formData.append("type", commentData.type || "comment");
+    formData.append("type", type);
+    formData.append("isInternal", commentData.isInternal ? "true" : "false");
     files.forEach((f) => formData.append("attachments", f));
     const res = await API.post(`/tickets/${ticketId}/comments`, formData, {
       headers: { "Content-Type": "multipart/form-data" }
     });
     return res.data;
   }
-  const res = await API.post(`/tickets/${ticketId}/comments`, commentData);
+  const res = await API.post(`/tickets/${ticketId}/comments`, {
+    content: commentData.content,
+    type,
+    isInternal: Boolean(commentData.isInternal)
+  });
   return res.data;
 };
 

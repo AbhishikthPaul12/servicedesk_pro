@@ -1,14 +1,47 @@
 import Ticket from "../models/Ticket.js";
-import Department from "../models/Department.js";
-import User from "../models/User.js"
-import AuditLog from "../models/AuditLog.js";
-import { isValidTransition } from "../utils/ticketWorkflow.js";
+import User from "../models/User.js";
+import {
+    isValidTransition,
+    isRoleAllowedTransition,
+    resolveTechnicianStatus,
+    canApproveResolution
+} from "../utils/ticketWorkflow.js";
 import {
     getSLAForPriority,
     calculateSLADueDate,
-    evaluateSLAStatus
+    calculateResponseDueDate,
+    evaluateSLAStatus,
+    getBusinessHours,
+    getAtRiskThreshold
 } from "../services/slaService.js";
 import { createNotification } from "../services/notificationService.js";
+import { createAuditLog } from "../services/auditService.js";
+import { getDepartmentManagers } from "../services/slaMonitorService.js";
+import {
+    buildTicketAccessFilter,
+    canAccessTicket,
+    applyDepartmentScope,
+    deny
+} from "../utils/authorization.js";
+import {
+    isSystemAdmin,
+    isITManager,
+    isTechnician,
+    isEmployee,
+    sameId,
+    normalizeRole
+} from "../utils/roles.js";
+
+const populateTicket = (query) =>
+    query
+        .populate("createdBy", "name email role")
+        .populate("assignedTo", "name email role")
+        .populate("assignedBy", "name email role")
+        .populate("approvedBy", "name email role")
+        .populate("escalatedBy", "name email role")
+        .populate("department", "name")
+        .populate("sla", "name priority responseTime resolutionTime")
+        .populate("relatedAssets", "assetTag name status");
 
 export const createTicket = async (req, res, next) => {
     try {
@@ -20,7 +53,10 @@ export const createTicket = async (req, res, next) => {
             department
         } = req.body;
 
-        // Find SLA based on ticket priority
+        if (isAssetManagerBlocked(req.user)) {
+            return deny(res, "Asset managers cannot create support tickets");
+        }
+
         const sla = await getSLAForPriority(priority);
 
         if (!sla) {
@@ -30,30 +66,64 @@ export const createTicket = async (req, res, next) => {
             });
         }
 
-        // Generate ticket number
         const year = new Date().getFullYear();
-
         const count = await Ticket.countDocuments();
+        const ticketNumber = `SD-${year}-${String(count + 1).padStart(5, "0")}`;
 
-        const ticketNumber = `SD-${year}-${String(
-            count + 1
-        ).padStart(5, "0")}`;
-
-        // Calculate SLA deadline
         const createdAt = new Date();
+        const businessHours = await getBusinessHours();
 
         const slaDueDate = calculateSLADueDate(
             createdAt,
-            sla.resolutionTime
+            sla.resolutionTime,
+            businessHours
+        );
+        const slaResponseDueDate = calculateResponseDueDate(
+            createdAt,
+            sla.responseTime,
+            businessHours
         );
 
-        // Handle uploaded attachments
+        // Employees must use their own department — never trust req.body.department
+        let ticketDepartment = null;
+        if (isEmployee(req.user)) {
+            if (!req.user.department) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Your account is not assigned to a department. Please contact an administrator before creating a ticket."
+                });
+            }
+            ticketDepartment = req.user.department;
+        } else if (isITManager(req.user)) {
+            if (!req.user.department) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Your IT Manager account is not assigned to a department. Please contact a System Admin."
+                });
+            }
+            ticketDepartment = req.user.department;
+        } else if (isTechnician(req.user)) {
+            if (!req.user.department) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Your Technician account is not assigned to a department. Please contact a System Admin."
+                });
+            }
+            ticketDepartment = req.user.department;
+        } else if (isSystemAdmin(req.user)) {
+            ticketDepartment = department || req.user.department || null;
+        } else {
+            ticketDepartment = req.user.department || null;
+        }
+
         const attachments = (req.files || []).map((f) => ({
             filename: f.originalname,
             url: `/uploads/${f.filename}`
         }));
 
-        // Create ticket
         const ticket = await Ticket.create({
             ticketNumber,
             title,
@@ -61,25 +131,23 @@ export const createTicket = async (req, res, next) => {
             category,
             priority,
             createdBy: req.user._id,
-            department: department || null,
+            department: ticketDepartment,
             sla: sla._id,
             slaDueDate,
+            slaResponseDueDate,
             slaStatus: "active",
             attachments
         });
 
-        // Create audit log
-        await AuditLog.create({
+        await createAuditLog({
             ticket: ticket._id,
             user: req.user._id,
+            actorRole: normalizeRole(req.user.role),
             action: "created",
-            description: `Ticket ${ticket.ticketNumber} created with ${priority} priority and ${sla.name}`
+            description: `Ticket ${ticket.ticketNumber} created with ${priority} priority`
         });
 
-        const populatedTicket = await Ticket.findById(ticket._id)
-            .populate("createdBy", "name email role")
-            .populate("department", "name")
-            .populate("sla", "name priority responseTime resolutionTime");
+        const populatedTicket = await populateTicket(Ticket.findById(ticket._id));
 
         res.status(201).json({
             success: true,
@@ -91,8 +159,24 @@ export const createTicket = async (req, res, next) => {
     }
 };
 
+function isAssetManagerBlocked(user) {
+    return normalizeRole(user.role) === "asset_manager";
+}
+
 export const getTickets = async (req, res, next) => {
     try {
+        if (isAssetManagerBlocked(req.user)) {
+            return deny(res, "Asset managers do not have ticket list access");
+        }
+
+        if (isITManager(req.user) && !req.user.department) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "Your IT Manager account is not assigned to a department. Please contact a System Admin."
+            });
+        }
+
         const {
             status,
             priority,
@@ -103,59 +187,24 @@ export const getTickets = async (req, res, next) => {
             keyword,
             startDate,
             endDate,
+            escalated,
+            approvalStatus,
             page = 1,
             limit = 10,
             sortBy = "createdAt",
             order = "desc"
         } = req.query;
 
-        const filter = {};
+        const filter = buildTicketAccessFilter(req.user);
+        applyDepartmentScope(req.user, filter, department);
 
-        const userRole = req.user.role;
-        const isSystemAdmin = userRole === "system_admin" || userRole === "admin";
-        const isITManager = userRole === "it_manager" || userRole === "manager";
-        const isTechnician = userRole === "technician";
-        const isEmployee = userRole === "employee";
-        const isAssetManager = userRole === "asset_manager";
-
-        if (isEmployee || isAssetManager) {
-            filter.createdBy = req.user._id;
-        } else if (isTechnician) {
-            const techConditions = [
-                { assignedTo: req.user._id },
-                { createdBy: req.user._id }
-            ];
-            if (req.user.department) {
-                techConditions.push({ department: req.user.department });
-            }
-            filter.$or = techConditions;
-        } else if (isITManager && req.user.department) {
-            filter.department = req.user.department;
-        }
-
-        if (status) {
-            filter.status = status;
-        }
-
-        if (priority) {
-            filter.priority = priority;
-        }
-
-        if (category) {
-            filter.category = category;
-        }
-
-        if (assignedTo) {
-            filter.assignedTo = assignedTo;
-        }
-
-        if (department) {
-            filter.department = department;
-        }
-
-        if (slaStatus) {
-            filter.slaStatus = slaStatus;
-        }
+        if (status) filter.status = status;
+        if (priority) filter.priority = priority;
+        if (category) filter.category = category;
+        if (assignedTo) filter.assignedTo = assignedTo;
+        if (slaStatus) filter.slaStatus = slaStatus;
+        if (escalated === "true") filter.isEscalated = true;
+        if (approvalStatus) filter.approvalStatus = approvalStatus;
 
         if (keyword) {
             const keywordFilter = [
@@ -164,10 +213,7 @@ export const getTickets = async (req, res, next) => {
                 { ticketNumber: { $regex: keyword, $options: "i" } }
             ];
             if (filter.$or) {
-                filter.$and = [
-                    { $or: filter.$or },
-                    { $or: keywordFilter }
-                ];
+                filter.$and = [{ $or: filter.$or }, { $or: keywordFilter }];
                 delete filter.$or;
             } else {
                 filter.$or = keywordFilter;
@@ -176,25 +222,16 @@ export const getTickets = async (req, res, next) => {
 
         if (startDate || endDate) {
             filter.createdAt = {};
-
-            if (startDate) {
-                filter.createdAt.$gte = new Date(startDate);
-            }
-
+            if (startDate) filter.createdAt.$gte = new Date(startDate);
             if (endDate) {
                 const end = new Date(endDate);
                 end.setHours(23, 59, 59, 999);
-
                 filter.createdAt.$lte = end;
             }
         }
 
         const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
-        const limitNumber = Math.min(
-            Math.max(parseInt(limit, 10) || 10, 1),
-            100
-        );
-
+        const limitNumber = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 100);
         const skip = (pageNumber - 1) * limitNumber;
 
         const allowedSortFields = [
@@ -205,26 +242,16 @@ export const getTickets = async (req, res, next) => {
             "slaDueDate",
             "ticketNumber"
         ];
-
-        const safeSortBy = allowedSortFields.includes(sortBy)
-            ? sortBy
-            : "createdAt";
-
+        const safeSortBy = allowedSortFields.includes(sortBy) ? sortBy : "createdAt";
         const safeOrder = order === "asc" ? 1 : -1;
 
         const [tickets, total] = await Promise.all([
-            Ticket.find(filter)
-                .populate("createdBy", "name email")
-                .populate("assignedTo", "name email role")
-                .populate("department", "name")
-                .populate(
-                    "sla",
-                    "name priority responseTime resolutionTime"
-                )
-                .sort({ [safeSortBy]: safeOrder })
-                .skip(skip)
-                .limit(limitNumber),
-
+            populateTicket(
+                Ticket.find(filter)
+                    .sort({ [safeSortBy]: safeOrder })
+                    .skip(skip)
+                    .limit(limitNumber)
+            ),
             Ticket.countDocuments(filter)
         ]);
 
@@ -240,7 +267,9 @@ export const getTickets = async (req, res, next) => {
                 priority: priority || null,
                 category: category || null,
                 assignedTo: assignedTo || null,
-                department: department || null,
+                department: isITManager(req.user)
+                    ? req.user.department
+                    : department || null,
                 slaStatus: slaStatus || null,
                 keyword: keyword || null,
                 startDate: startDate || null,
@@ -255,10 +284,19 @@ export const getTickets = async (req, res, next) => {
 
 export const getTicketById = async (req, res, next) => {
     try {
-        const ticket = await Ticket.findById(req.params.id)
-            .populate("createdBy", "name email role")
-            .populate("assignedTo", "name email role")
-            .populate("department", "name");
+        if (isAssetManagerBlocked(req.user)) {
+            return deny(res, "Asset managers do not have ticket access");
+        }
+
+        if (isITManager(req.user) && !req.user.department) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "Your IT Manager account is not assigned to a department. Please contact a System Admin."
+            });
+        }
+
+        const ticket = await populateTicket(Ticket.findById(req.params.id));
 
         if (!ticket) {
             return res.status(404).json({
@@ -267,38 +305,20 @@ export const getTicketById = async (req, res, next) => {
             });
         }
 
-        const userRole = req.user.role;
-        const isSystemAdmin = userRole === "system_admin" || userRole === "admin";
-        const isITManager = userRole === "it_manager" || userRole === "manager";
-        const isTechnician = userRole === "technician";
-        const isCreator = ticket.createdBy && (ticket.createdBy._id || ticket.createdBy).toString() === req.user._id.toString();
-        const isAssigned = ticket.assignedTo && (ticket.assignedTo._id || ticket.assignedTo).toString() === req.user._id.toString();
-        const isSameDept = req.user.department && ticket.department && (ticket.department._id || ticket.department).toString() === req.user.department.toString();
+        if (!canAccessTicket(req.user, ticket)) {
+            return deny(res, "You are not authorized to view this ticket");
+        }
 
-        if (!isSystemAdmin) {
-            if (isITManager && !isSameDept && req.user.department) {
-                return res.status(403).json({
-                    success: false,
-                    message: "You are not authorized to view tickets outside your department"
-                });
-            }
-            if (isTechnician && !isAssigned && !isSameDept && !isCreator) {
-                return res.status(403).json({
-                    success: false,
-                    message: "You are not authorized to view this ticket"
-                });
-            }
-            if (!isITManager && !isTechnician && !isCreator) {
-                return res.status(403).json({
-                    success: false,
-                    message: "You are not authorized to view this ticket"
-                });
-            }
+        // Strip internal AI diagnostics for employees
+        const responseTicket = ticket.toObject();
+        if (isEmployee(req.user)) {
+            delete responseTicket.aiAnalysis;
+            delete responseTicket.aiKnowledgeSuggestions;
         }
 
         res.status(200).json({
             success: true,
-            ticket
+            ticket: responseTicket
         });
     } catch (error) {
         next(error);
@@ -316,72 +336,32 @@ export const updateTicket = async (req, res, next) => {
             });
         }
 
-        const userRole = req.user.role;
-        const isSystemAdmin = userRole === "system_admin" || userRole === "admin";
-        const isITManager = userRole === "it_manager" || userRole === "manager";
-        const isTechnician = userRole === "technician";
-        const isCreator = existingTicket.createdBy.toString() === req.user._id.toString();
-        const isAssigned = existingTicket.assignedTo && existingTicket.assignedTo.toString() === req.user._id.toString();
-        const isSameDept = req.user.department && existingTicket.department && existingTicket.department.toString() === req.user.department.toString();
-
-        const isStaff = isSystemAdmin || isITManager || isTechnician;
-
-        if (!isSystemAdmin) {
-            if (isITManager && !isSameDept && req.user.department) {
-                return res.status(403).json({
-                    success: false,
-                    message: "You are not authorized to update tickets outside your department"
-                });
-            }
-            if (isTechnician && !isAssigned && !isSameDept && !isCreator) {
-                return res.status(403).json({
-                    success: false,
-                    message: "You are not authorized to update this ticket"
-                });
-            }
-            if (!isStaff) {
-                if (!isCreator) {
-                    return res.status(403).json({
-                        success: false,
-                        message: "You are not authorized to update this ticket"
-                    });
-                }
-                // Employees cannot edit resolved or closed tickets
-                if (["resolved", "closed"].includes(existingTicket.status) && (req.body.title || req.body.description)) {
-                    return res.status(400).json({
-                        success: false,
-                        message: "Cannot edit title or description on a resolved or closed ticket"
-                    });
-                }
-                // Employees cannot modify priority, department, resolution, or due dates
-                if (req.body.priority || req.body.department || req.body.resolution || req.body.dueDate) {
-                    return res.status(403).json({
-                        success: false,
-                        message: "Employees are not permitted to modify priority, department, resolution, or due dates"
-                    });
-                }
-                const allowedEmployeeStatuses = ["closed", "reopened"];
-                if (req.body.status && !allowedEmployeeStatuses.includes(req.body.status)) {
-                    return res.status(403).json({
-                        success: false,
-                        message: "Employees can only confirm resolution (close) or reopen tickets"
-                    });
-                }
-            }
+        if (!canAccessTicket(req.user, existingTicket)) {
+            return deny(res, "You are not authorized to update this ticket");
         }
 
+        const staff =
+            isSystemAdmin(req.user) ||
+            isITManager(req.user) ||
+            isTechnician(req.user);
+
         const updates = {};
-        const allowedFields = isStaff
-            ? [
-                "title",
-                "description",
-                "category",
-                "priority",
-                "department",
-                "dueDate",
-                "resolution"
-            ]
+        const allowedFields = staff
+            ? ["title", "description", "category", "priority", "resolution"]
             : ["title", "description", "category"];
+
+        // Only system admin / IT manager can change department (within scope)
+        if (
+            req.body.department !== undefined &&
+            (isSystemAdmin(req.user) || isITManager(req.user))
+        ) {
+            if (isITManager(req.user)) {
+                // Managers cannot move tickets out of their department
+                updates.department = req.user.department;
+            } else {
+                updates.department = req.body.department;
+            }
+        }
 
         for (const field of allowedFields) {
             if (req.body[field] !== undefined) {
@@ -389,111 +369,216 @@ export const updateTicket = async (req, res, next) => {
             }
         }
 
-        // Handle priority changes: recalculate SLA
-        const previousPriority = existingTicket.priority;
-        if (updates.priority && updates.priority !== previousPriority) {
-            const newSLA = await getSLAForPriority(updates.priority);
-            if (newSLA) {
-                existingTicket.sla = newSLA._id;
-                existingTicket.slaDueDate = calculateSLADueDate(
-                    existingTicket.createdAt,
-                    newSLA.resolutionTime
+        if (isEmployee(req.user)) {
+            if (["resolved", "closed", "awaiting_manager_approval"].includes(existingTicket.status)) {
+                if (req.body.title || req.body.description) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Cannot edit title or description on a resolved or closed ticket"
+                    });
+                }
+            }
+            if (req.body.priority || req.body.department || req.body.resolution) {
+                return deny(
+                    res,
+                    "Employees are not permitted to modify priority, department, or resolution"
                 );
             }
         }
 
-        // Handle status separately
-        if (req.body.status !== undefined) {
-            const isValid = isValidTransition(
-                existingTicket.status,
-                req.body.status
+        // Technicians cannot change priority/department arbitrarily on non-assigned (already gated)
+        if (isTechnician(req.user) && req.body.department) {
+            return deny(res, "Technicians cannot change ticket department");
+        }
+
+        const previousPriority = existingTicket.priority;
+        if (updates.priority && updates.priority !== previousPriority) {
+            const newSLA = await getSLAForPriority(updates.priority);
+            if (newSLA) {
+                const businessHours = await getBusinessHours();
+                existingTicket.sla = newSLA._id;
+                existingTicket.slaDueDate = calculateSLADueDate(
+                    existingTicket.createdAt,
+                    newSLA.resolutionTime,
+                    businessHours
+                );
+                existingTicket.slaResponseDueDate = calculateResponseDueDate(
+                    existingTicket.createdAt,
+                    newSLA.responseTime,
+                    businessHours
+                );
+            }
+            await createAuditLog({
+                ticket: existingTicket._id,
+                user: req.user._id,
+                actorRole: normalizeRole(req.user.role),
+                action: "priority_changed",
+                field: "priority",
+                oldValue: previousPriority,
+                newValue: updates.priority,
+                description: `Priority changed from ${previousPriority} to ${updates.priority}`
+            });
+        }
+
+        let requestedStatus = req.body.status;
+        const previousStatus = existingTicket.status;
+
+        if (requestedStatus !== undefined) {
+            // Technician resolve → awaiting manager approval
+            const effectiveStatus = resolveTechnicianStatus(
+                req.user.role,
+                requestedStatus
             );
 
-            if (!isValid) {
+            if (!isValidTransition(previousStatus, effectiveStatus)) {
                 return res.status(400).json({
                     success: false,
-                    message: `Invalid status transition from ${existingTicket.status} to ${req.body.status}`
+                    message: `Invalid status transition from ${previousStatus} to ${effectiveStatus}`
                 });
             }
 
-            updates.status = req.body.status;
+            if (
+                !isRoleAllowedTransition(
+                    req.user.role,
+                    previousStatus,
+                    // For tech, allow "resolved" intent even though effective is awaiting
+                    requestedStatus === "resolved" && isTechnician(req.user)
+                        ? "resolved"
+                        : effectiveStatus
+                ) &&
+                !(
+                    isTechnician(req.user) &&
+                    requestedStatus === "resolved" &&
+                    previousStatus === "in_progress"
+                )
+            ) {
+                // Special-case: technician in_progress → resolved is allowed (maps to awaiting)
+                const techResolveOk =
+                    isTechnician(req.user) &&
+                    previousStatus === "in_progress" &&
+                    requestedStatus === "resolved";
+
+                if (!techResolveOk) {
+                    return deny(
+                        res,
+                        `Your role cannot transition ticket from ${previousStatus} to ${requestedStatus}`
+                    );
+                }
+            }
+
+            // Direct close blocked for technicians
+            if (isTechnician(req.user) && requestedStatus === "closed") {
+                return deny(res, "Technicians cannot directly close tickets");
+            }
+
+            updates.status = effectiveStatus;
+
+            if (
+                (requestedStatus === "resolved" ||
+                    effectiveStatus === "awaiting_manager_approval") &&
+                previousStatus !== "resolved" &&
+                previousStatus !== "awaiting_manager_approval"
+            ) {
+                existingTicket.resolvedAt = new Date();
+                existingTicket.approvalStatus = "pending";
+            }
+
+            if (effectiveStatus === "reopened") {
+                existingTicket.resolvedAt = null;
+                existingTicket.approvalStatus = "none";
+                existingTicket.approvedBy = null;
+                existingTicket.approvedAt = null;
+                existingTicket.approvalComment = null;
+            }
+
+            if (effectiveStatus === "closed") {
+                existingTicket.approvalStatus =
+                    existingTicket.approvalStatus === "pending"
+                        ? "approved"
+                        : existingTicket.approvalStatus;
+                if (!existingTicket.approvedBy) {
+                    existingTicket.approvedBy = req.user._id;
+                }
+                if (!existingTicket.approvedAt) {
+                    existingTicket.approvedAt = new Date();
+                }
+            }
         }
 
-        const previousStatus = existingTicket.status;
-        // Save the updated ticket
         Object.assign(existingTicket, updates);
 
-        if (
-            req.body.status === "resolved" &&
-            previousStatus !== "resolved"
-        ) {
-            existingTicket.resolvedAt = new Date();
-        }
-
-        if (req.body.status === "reopened") {
-            existingTicket.resolvedAt = null;
-        }
-
-        existingTicket.slaStatus = evaluateSLAStatus(existingTicket);
+        const atRiskPercent = await getAtRiskThreshold();
+        existingTicket.slaStatus = evaluateSLAStatus(existingTicket, {
+            atRiskThresholdPercent: atRiskPercent
+        });
 
         await existingTicket.save();
 
-        // Create audit log and notifications for status changes
         if (
-            req.body.status !== undefined &&
-            previousStatus !== req.body.status
+            requestedStatus !== undefined &&
+            previousStatus !== existingTicket.status
         ) {
             let action = "status_changed";
-
-            if (req.body.status === "resolved") {
+            if (existingTicket.status === "awaiting_manager_approval") {
                 action = "resolved";
             }
+            if (existingTicket.status === "closed") action = "closed";
+            if (existingTicket.status === "reopened") action = "reopened";
 
-            if (req.body.status === "closed") {
-                action = "closed";
-            }
-
-            if (req.body.status === "reopened") {
-                action = "reopened";
-            }
-
-            await AuditLog.create({
+            await createAuditLog({
                 ticket: existingTicket._id,
                 user: req.user._id,
+                actorRole: normalizeRole(req.user.role),
                 action,
                 field: "status",
                 oldValue: previousStatus,
-                newValue: req.body.status,
-                description: `Ticket status changed from ${previousStatus} to ${req.body.status}`
+                newValue: existingTicket.status,
+                description: `Ticket status changed from ${previousStatus} to ${existingTicket.status}`
             });
 
-            // Notify requester if updater is not the creator
-            if (existingTicket.createdBy.toString() !== req.user._id.toString()) {
+            if (!sameId(existingTicket.createdBy, req.user._id)) {
                 await createNotification({
                     recipient: existingTicket.createdBy,
                     ticket: existingTicket._id,
                     type: "ticket_status_changed",
                     title: "Ticket Status Updated",
-                    message: `Ticket ${existingTicket.ticketNumber} status has been updated to "${req.body.status}".`
+                    message: `Ticket ${existingTicket.ticketNumber} status has been updated to "${existingTicket.status}".`
                 }).catch((err) => console.error("Notification error:", err.message));
             }
 
-            // Notify assigned technician if different from current updater
-            if (existingTicket.assignedTo && existingTicket.assignedTo.toString() !== req.user._id.toString()) {
+            if (
+                existingTicket.assignedTo &&
+                !sameId(existingTicket.assignedTo, req.user._id)
+            ) {
                 await createNotification({
                     recipient: existingTicket.assignedTo,
                     ticket: existingTicket._id,
                     type: "ticket_status_changed",
                     title: "Assigned Ticket Status Updated",
-                    message: `Ticket ${existingTicket.ticketNumber} status changed to "${req.body.status}".`
+                    message: `Ticket ${existingTicket.ticketNumber} status changed to "${existingTicket.status}".`
                 }).catch((err) => console.error("Notification error:", err.message));
+            }
+
+            // Notify managers when awaiting approval
+            if (existingTicket.status === "awaiting_manager_approval") {
+                const managers = await getDepartmentManagers(
+                    existingTicket.department
+                );
+                for (const manager of managers) {
+                    await createNotification({
+                        recipient: manager._id,
+                        ticket: existingTicket._id,
+                        type: "approval_required",
+                        title: "Resolution Awaiting Approval",
+                        message: `Ticket ${existingTicket.ticketNumber} is awaiting manager approval.`
+                    }).catch((err) => console.error("Notification error:", err.message));
+                }
             }
         }
 
-        const populatedTicket = await Ticket.findById(existingTicket._id)
-            .populate("createdBy", "name email role")
-            .populate("assignedTo", "name email role")
-            .populate("department", "name");
+        const populatedTicket = await populateTicket(
+            Ticket.findById(existingTicket._id)
+        );
 
         res.status(200).json({
             success: true,
@@ -525,6 +610,13 @@ export const assignTicket = async (req, res, next) => {
             });
         }
 
+        if (!technician.isActive) {
+            return res.status(400).json({
+                success: false,
+                message: "Cannot assign an inactive technician"
+            });
+        }
+
         const ticket = await Ticket.findById(req.params.id);
 
         if (!ticket) {
@@ -534,9 +626,37 @@ export const assignTicket = async (req, res, next) => {
             });
         }
 
+        if (!canAccessTicket(req.user, ticket) && !isSystemAdmin(req.user)) {
+            return deny(res, "You are not authorized to assign this ticket");
+        }
+
+        if (isITManager(req.user)) {
+            if (
+                !req.user.department ||
+                !ticket.department ||
+                !sameId(ticket.department, req.user.department)
+            ) {
+                return deny(
+                    res,
+                    "You can only assign tickets in your own department"
+                );
+            }
+            if (
+                !technician.department ||
+                !sameId(technician.department, req.user.department)
+            ) {
+                return deny(
+                    res,
+                    "Technician must belong to your department"
+                );
+            }
+        }
+
         const previousAssignee = ticket.assignedTo;
 
         ticket.assignedTo = technicianId;
+        ticket.assignedBy = req.user._id;
+        ticket.assignedAt = new Date();
 
         if (ticket.status === "open") {
             ticket.status = "assigned";
@@ -544,19 +664,22 @@ export const assignTicket = async (req, res, next) => {
 
         await ticket.save();
 
-        await AuditLog.create({
+        await createAuditLog({
             ticket: ticket._id,
             user: req.user._id,
-            action: "assigned",
+            actorRole: normalizeRole(req.user.role),
+            action: previousAssignee ? "reassigned" : "assigned",
             field: "assignedTo",
-            oldValue: previousAssignee
-                ? previousAssignee.toString()
-                : null,
+            oldValue: previousAssignee ? previousAssignee.toString() : null,
             newValue: technicianId.toString(),
-            description: `Ticket assigned to ${technician.name}`
+            description: `Ticket assigned to ${technician.name}`,
+            metadata: {
+                previousTechnician: previousAssignee?.toString() || null,
+                newTechnician: technicianId.toString(),
+                assignedBy: req.user._id.toString()
+            }
         });
 
-        // Notify technician
         await createNotification({
             recipient: technician._id,
             ticket: ticket._id,
@@ -565,8 +688,7 @@ export const assignTicket = async (req, res, next) => {
             message: `You have been assigned to ticket ${ticket.ticketNumber}: "${ticket.title}".`
         }).catch((err) => console.error("Notification error:", err.message));
 
-        // Notify ticket creator if not the assigner
-        if (ticket.createdBy.toString() !== req.user._id.toString()) {
+        if (!sameId(ticket.createdBy, req.user._id)) {
             await createNotification({
                 recipient: ticket.createdBy,
                 ticket: ticket._id,
@@ -576,10 +698,7 @@ export const assignTicket = async (req, res, next) => {
             }).catch((err) => console.error("Notification error:", err.message));
         }
 
-        const populatedTicket = await Ticket.findById(ticket._id)
-            .populate("createdBy", "name email role")
-            .populate("assignedTo", "name email role")
-            .populate("department", "name");
+        const populatedTicket = await populateTicket(Ticket.findById(ticket._id));
 
         res.status(200).json({
             success: true,
@@ -591,19 +710,276 @@ export const assignTicket = async (req, res, next) => {
     }
 };
 
+export const approveTicket = async (req, res, next) => {
+    try {
+        if (!canApproveResolution(req.user)) {
+            return deny(res, "Only IT Managers or System Admins can approve resolutions");
+        }
+
+        const ticket = await Ticket.findById(req.params.id);
+        if (!ticket) {
+            return res.status(404).json({ success: false, message: "Ticket not found" });
+        }
+
+        if (!canAccessTicket(req.user, ticket)) {
+            return deny(res, "You are not authorized to approve this ticket");
+        }
+
+        if (!isSystemAdmin(req.user) && sameId(ticket.assignedTo, req.user._id)) {
+            return deny(res, "Technicians cannot approve their own resolution");
+        }
+
+        if (isITManager(req.user)) {
+            if (!req.user.department || !ticket.department || !sameId(ticket.department, req.user.department)) {
+                return deny(res, "You can only approve tickets in your own department");
+            }
+        }
+
+        if (
+            ticket.status !== "awaiting_manager_approval" &&
+            ticket.status !== "resolved"
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Ticket is not awaiting manager approval"
+            });
+        }
+
+        const previousStatus = ticket.status;
+        const comment = req.body.comment || req.body.approvalComment || "";
+
+        ticket.status = "closed";
+        ticket.approvalStatus = "approved";
+        ticket.approvedBy = req.user._id;
+        ticket.approvedAt = new Date();
+        ticket.approvalComment = comment;
+
+        await ticket.save();
+
+        await createAuditLog({
+            ticket: ticket._id,
+            user: req.user._id,
+            actorRole: normalizeRole(req.user.role),
+            action: "approved",
+            field: "status",
+            oldValue: previousStatus,
+            newValue: "closed",
+            description: `Resolution approved${comment ? `: ${comment}` : ""}`,
+            metadata: { approvalComment: comment }
+        });
+
+        await createNotification({
+            recipient: ticket.createdBy,
+            ticket: ticket._id,
+            type: "ticket_status_changed",
+            title: "Ticket Closed",
+            message: `Ticket ${ticket.ticketNumber} has been approved and closed.`
+        }).catch(() => {});
+
+        if (ticket.assignedTo) {
+            await createNotification({
+                recipient: ticket.assignedTo,
+                ticket: ticket._id,
+                type: "ticket_status_changed",
+                title: "Resolution Approved",
+                message: `Your resolution for ticket ${ticket.ticketNumber} was approved.`
+            }).catch(() => {});
+        }
+
+        const populatedTicket = await populateTicket(Ticket.findById(ticket._id));
+
+        res.status(200).json({
+            success: true,
+            message: "Resolution approved and ticket closed",
+            ticket: populatedTicket
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const rejectTicket = async (req, res, next) => {
+    try {
+        if (!canApproveResolution(req.user)) {
+            return deny(res, "Only IT Managers or System Admins can reject resolutions");
+        }
+
+        const ticket = await Ticket.findById(req.params.id);
+        if (!ticket) {
+            return res.status(404).json({ success: false, message: "Ticket not found" });
+        }
+
+        if (!canAccessTicket(req.user, ticket)) {
+            return deny(res, "You are not authorized to reject this ticket");
+        }
+
+        if (!isSystemAdmin(req.user) && sameId(ticket.assignedTo, req.user._id)) {
+            return deny(res, "Technicians cannot reject their own resolution");
+        }
+
+        if (isITManager(req.user)) {
+            if (!req.user.department || !ticket.department || !sameId(ticket.department, req.user.department)) {
+                return deny(res, "You can only reject tickets in your own department");
+            }
+        }
+
+        if (
+            ticket.status !== "awaiting_manager_approval" &&
+            ticket.status !== "resolved"
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Ticket is not awaiting manager approval"
+            });
+        }
+
+        const previousStatus = ticket.status;
+        const comment = req.body.comment || req.body.approvalComment || "";
+        const reopenTo = req.body.reopenTo === "reopened" ? "reopened" : "in_progress";
+
+        ticket.status = reopenTo;
+        ticket.approvalStatus = "rejected";
+        ticket.approvedBy = req.user._id;
+        ticket.approvedAt = new Date();
+        ticket.approvalComment = comment;
+        ticket.resolvedAt = null;
+
+        await ticket.save();
+
+        await createAuditLog({
+            ticket: ticket._id,
+            user: req.user._id,
+            actorRole: normalizeRole(req.user.role),
+            action: "rejected",
+            field: "status",
+            oldValue: previousStatus,
+            newValue: reopenTo,
+            description: `Resolution rejected${comment ? `: ${comment}` : ""}`,
+            metadata: { approvalComment: comment }
+        });
+
+        if (ticket.assignedTo) {
+            await createNotification({
+                recipient: ticket.assignedTo,
+                ticket: ticket._id,
+                type: "ticket_status_changed",
+                title: "Resolution Rejected",
+                message: `Resolution for ticket ${ticket.ticketNumber} was rejected. Status: ${reopenTo}.`
+            }).catch(() => {});
+        }
+
+        await createNotification({
+            recipient: ticket.createdBy,
+            ticket: ticket._id,
+            type: "ticket_status_changed",
+            title: "Ticket Returned for Work",
+            message: `Ticket ${ticket.ticketNumber} resolution was rejected and returned to ${reopenTo}.`
+        }).catch(() => {});
+
+        const populatedTicket = await populateTicket(Ticket.findById(ticket._id));
+
+        res.status(200).json({
+            success: true,
+            message: "Resolution rejected",
+            ticket: populatedTicket
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const escalateTicket = async (req, res, next) => {
+    try {
+        if (!isSystemAdmin(req.user) && !isITManager(req.user)) {
+            return deny(res, "Only IT Managers or System Admins can escalate tickets");
+        }
+
+        const ticket = await Ticket.findById(req.params.id);
+        if (!ticket) {
+            return res.status(404).json({ success: false, message: "Ticket not found" });
+        }
+
+        if (!canAccessTicket(req.user, ticket)) {
+            return deny(res, "You are not authorized to escalate this ticket");
+        }
+
+        const reason = (req.body.reason || req.body.escalationReason || "").trim();
+        if (!reason) {
+            return res.status(400).json({
+                success: false,
+                message: "Escalation reason is required"
+            });
+        }
+
+        const previousSlaStatus = ticket.slaStatus;
+
+        ticket.isEscalated = true;
+        ticket.escalatedBy = req.user._id;
+        ticket.escalatedAt = new Date();
+        ticket.escalationReason = reason;
+        ticket.slaStatus = "escalated";
+
+        await ticket.save();
+
+        await createAuditLog({
+            ticket: ticket._id,
+            user: req.user._id,
+            actorRole: normalizeRole(req.user.role),
+            action: "escalated",
+            field: "slaStatus",
+            oldValue: previousSlaStatus,
+            newValue: "escalated",
+            description: `Ticket escalated: ${reason}`,
+            metadata: {
+                escalatedBy: req.user._id.toString(),
+                escalatedAt: ticket.escalatedAt,
+                escalationReason: reason
+            }
+        });
+
+        const managers = await getDepartmentManagers(ticket.department);
+        for (const manager of managers) {
+            if (sameId(manager._id, req.user._id)) continue;
+            await createNotification({
+                recipient: manager._id,
+                ticket: ticket._id,
+                type: "ticket_escalated",
+                title: "Ticket Escalated",
+                message: `Ticket ${ticket.ticketNumber} was escalated: ${reason}`
+            }).catch(() => {});
+        }
+
+        if (ticket.assignedTo) {
+            await createNotification({
+                recipient: ticket.assignedTo,
+                ticket: ticket._id,
+                type: "ticket_escalated",
+                title: "Assigned Ticket Escalated",
+                message: `Ticket ${ticket.ticketNumber} was escalated: ${reason}`
+            }).catch(() => {});
+        }
+
+        const populatedTicket = await populateTicket(Ticket.findById(ticket._id));
+
+        res.status(200).json({
+            success: true,
+            message: "Ticket escalated successfully",
+            ticket: populatedTicket
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const uploadTicketAttachment = async (req, res, next) => {
     try {
         const ticket = await Ticket.findById(req.params.id);
-        if (!ticket) return res.status(404).json({ success: false, message: "Ticket not found" });
+        if (!ticket) {
+            return res.status(404).json({ success: false, message: "Ticket not found" });
+        }
 
-        const isCreator = ticket.createdBy.toString() === req.user._id.toString();
-        const isAssigned = ticket.assignedTo && ticket.assignedTo.toString() === req.user._id.toString();
-        const userRole = req.user.role;
-        const isAdmin = userRole === "system_admin" || userRole === "admin";
-        const isManager = userRole === "it_manager" || userRole === "manager";
-
-        if (!isAdmin && !isManager && !isAssigned && !isCreator) {
-            return res.status(403).json({ success: false, message: "Not authorized to attach files to this ticket" });
+        if (!canAccessTicket(req.user, ticket)) {
+            return deny(res, "Not authorized to attach files to this ticket");
         }
 
         if (!req.files || req.files.length === 0) {
@@ -618,9 +994,10 @@ export const uploadTicketAttachment = async (req, res, next) => {
         ticket.attachments.push(...newAttachments);
         await ticket.save();
 
-        await AuditLog.create({
+        await createAuditLog({
             ticket: ticket._id,
             user: req.user._id,
+            actorRole: normalizeRole(req.user.role),
             action: "updated",
             description: `${req.files.length} attachment(s) added to ticket`
         });
